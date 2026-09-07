@@ -1,0 +1,677 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; media-src clip:; img-src clip: data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'">
+<title>Loop Viewer</title>
+<style>
+    :root {
+        --bg: #000;
+        --chrome: #141414;
+        --line: #2a2a2a;
+        --ink: #d8d8d8;
+        --dim: #8a8a8a;
+        --bad: #ff5f56;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--ink);
+        font: 13px/1.4 system-ui, "Segoe UI", sans-serif;
+        overflow: hidden;
+        user-select: none;
+    }
+
+    body { display: flex; flex-direction: column; }
+
+    header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        background: var(--chrome);
+        border-bottom: 1px solid var(--line);
+        flex: 0 0 auto;
+    }
+
+    button, select, input {
+        font: inherit;
+        color: var(--ink);
+        background: #1e1e1e;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 4px 8px;
+    }
+
+    button { cursor: pointer; }
+    button:hover:not(:disabled) { background: #2a2a2a; }
+    button:disabled { opacity: .4; cursor: default; }
+    button.on { background: #33465e; border-color: #47617f; }
+    input[type=search] { width: 190px; }
+    .spacer { flex: 1 1 auto; }
+    .count, .pager { color: var(--dim); white-space: nowrap; }
+
+    #grid {
+        flex: 1 1 auto;
+        display: grid;
+        gap: 2px;
+        padding: 2px;
+        min-height: 0;
+    }
+
+    .tile {
+        position: relative;
+        background: #000;
+        overflow: hidden;
+        min-width: 0;
+        min-height: 0;
+    }
+
+    .tile video {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        background: #000;
+        display: block;
+        cursor: pointer;
+    }
+
+    .cap {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 3px 6px;
+        font-size: 11px;
+        color: var(--dim);
+        background: linear-gradient(transparent, rgba(0, 0, 0, .85));
+        opacity: .35;
+        transition: opacity .12s;
+        pointer-events: none;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .tile:hover .cap { opacity: 1; color: var(--ink); }
+    .tile.bad .cap { opacity: 1; color: var(--bad); }
+    .tile.bad video { outline: 1px solid var(--bad); outline-offset: -1px; }
+
+    #empty {
+        flex: 1 1 auto;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        color: var(--dim);
+    }
+
+    body.empty #grid { display: none; }
+    body.empty #empty { display: flex; }
+
+    #solo {
+        position: fixed;
+        inset: 0;
+        background: #000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+    }
+
+    body.solo #solo { display: flex; }
+    #solo video { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+    #solocap {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 8px 12px;
+        font-size: 12px;
+        color: var(--dim);
+        background: linear-gradient(transparent, rgba(0, 0, 0, .9));
+        text-align: center;
+        pointer-events: none;
+    }
+
+    body.drop::after {
+        content: "Drop a folder";
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(20, 40, 70, .75);
+        font-size: 20px;
+        color: #fff;
+        z-index: 20;
+        pointer-events: none;
+    }
+</style>
+
+<header>
+    <button id="pick" title="Choose the folder of clips">Change folder</button>
+    <input id="filter" type="search" placeholder="Filter by name" autocomplete="off" spellcheck="false">
+    <select id="per" title="Clips per page">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="4">4</option>
+        <option value="6">6</option>
+        <option value="8">8</option>
+        <option value="12">12</option>
+        <option value="16">16</option>
+    </select>
+    <select id="sort" title="Sort order">
+        <option value="name">Name</option>
+        <option value="newest">Newest</option>
+        <option value="oldest">Oldest</option>
+        <option value="largest">Largest</option>
+        <option value="shuffle">Shuffle</option>
+    </select>
+    <button id="mute" title="Mute (M)">Muted</button>
+    <button id="pause" title="Pause all (Space)">Pause</button>
+    <button id="resync" title="Restart together (R)">Resync</button>
+    <button id="full" title="Fullscreen (F)">Fullscreen</button>
+    <span class="spacer"></span>
+    <span class="count" id="count"></span>
+    <button id="prev" title="Previous page">&larr;</button>
+    <span class="pager" id="pager"></span>
+    <button id="next" title="Next page">&rarr;</button>
+</header>
+
+<div id="grid"></div>
+
+<div id="empty">
+    <div id="emptymsg">No folder chosen yet.</div>
+    <button id="pick2">Choose a folder</button>
+</div>
+
+<div id="solo"><video id="solovid" loop playsinline></video>
+    <div id="solocap"></div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    var LAYOUTS = { 1: [1, 1], 2: [2, 1], 4: [2, 2], 6: [3, 2], 8: [4, 2], 12: [4, 3], 16: [4, 4] };
+    var CANPLAY_TIMEOUT = 5000;
+
+    var state = {
+        all: [], page: 0, per: 8, sort: "name", filter: "",
+        muted: true, paused: false, vids: [], soloIndex: -1, soloUrl: null
+    };
+
+    var collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+    var randByPath = Object.create(null);
+    var thumbTried = Object.create(null);
+
+    var $ = function (id) { return document.getElementById(id); };
+    var grid = $('grid'), solo = $('solo'), solovid = $('solovid'), solocap = $('solocap');
+
+    // Arbitrary filenames: #, ? and % are all legal and all break naive URL
+    // building, so the whole path is encoded and decoded again in main.
+    function clipUrl(p) {
+        return 'clip://local/' + encodeURIComponent(String(p).replace(/\\/g, '/'));
+    }
+
+    function basename(rel) {
+        var i = rel.lastIndexOf('/');
+        return i < 0 ? rel : rel.slice(i + 1);
+    }
+
+    function fmtDuration(s) {
+        if (!isFinite(s) || s <= 0) return '';
+        var m = Math.floor(s / 60), r = s - m * 60;
+        return m > 0 ? m + ':' + (r < 10 ? '0' : '') + r.toFixed(0) : r.toFixed(1) + 's';
+    }
+
+    // ---------------------------------------------------------- data
+
+    // Replaces addFiles(FileList): the same job, over the array main sends.
+    function setClips(list) {
+        state.all = (list || []).map(function (c) {
+            if (!(c.path in randByPath)) randByPath[c.path] = Math.random();
+            return {
+                path: c.path,
+                rel: c.rel,
+                name: basename(c.rel),
+                size: c.size,
+                time: c.time,
+                rand: randByPath[c.path]
+            };
+        });
+        render();
+    }
+
+    function visible() {
+        var f = state.filter.trim().toLowerCase();
+        var out = f ? state.all.filter(function (c) {
+            return c.rel.toLowerCase().indexOf(f) >= 0;
+        }) : state.all.slice();
+
+        out.sort(function (a, b) {
+            switch (state.sort) {
+                case 'newest': return b.time - a.time;
+                case 'oldest': return a.time - b.time;
+                case 'largest': return b.size - a.size;
+                case 'shuffle': return a.rand - b.rand;
+                default: return collator.compare(a.rel, b.rel);
+            }
+        });
+        return out;
+    }
+
+    function pageCount(vis) {
+        return Math.max(1, Math.ceil(vis.length / state.per));
+    }
+
+    // ---------------------------------------------------------- rendering
+
+    // Only the current page is ever decoding. This is the whole reason a folder
+    // of 118 clips stays cheap, so nothing may hold a src past a page turn.
+    function releaseUrls() {
+        state.vids.forEach(function (v) {
+            try {
+                v.pause();
+                v.removeAttribute('src');
+                v.load();
+            } catch (e) { /* a tile mid-teardown is not worth a throw */ }
+        });
+        state.vids = [];
+    }
+
+    function render() {
+        releaseUrls();
+
+        var vis = visible();
+        var pages = pageCount(vis);
+        if (state.page >= pages) state.page = pages - 1;
+        if (state.page < 0) state.page = 0;
+
+        var layout = LAYOUTS[state.per] || LAYOUTS[8];
+        grid.style.gridTemplateColumns = 'repeat(' + layout[0] + ', 1fr)';
+        grid.style.gridTemplateRows = 'repeat(' + layout[1] + ', 1fr)';
+        grid.textContent = '';
+
+        var start = state.page * state.per;
+        var slice = vis.slice(start, start + state.per);
+        var vids = [];
+
+        slice.forEach(function (clip, i) {
+            var tile = document.createElement('div');
+            tile.className = 'tile';
+
+            var v = document.createElement('video');
+            v.loop = true;
+            v.muted = state.muted;
+            v.playsInline = true;
+            v.preload = 'auto';
+
+            var cap = document.createElement('div');
+            cap.className = 'cap';
+            cap.textContent = clip.rel;
+
+            v.addEventListener('error', function () {
+                tile.classList.add('bad');
+                cap.textContent = clip.rel + " — can't decode";
+            });
+
+            v.addEventListener('loadedmetadata', function () {
+                var d = fmtDuration(v.duration);
+                if (d) cap.textContent = clip.rel + '  ' + d;
+            });
+
+            v.addEventListener('click', function () { openSolo(start + i); });
+
+            // Must be set before src. Without it the canvas poster fallback
+            // hits a tainted-canvas error instead of a frame.
+            v.crossOrigin = 'anonymous';
+            v.src = clipUrl(clip.path);
+            applyPoster(v, clip);
+
+            tile.appendChild(v);
+            tile.appendChild(cap);
+            grid.appendChild(tile);
+            vids.push(v);
+        });
+
+        state.vids = vids;
+        document.body.classList.toggle('empty', state.all.length === 0);
+        syncPlay();
+        updateChrome(vis, pages);
+    }
+
+    // Posters come from the cache in main. Where there is no ffmpeg the tile
+    // paints its own first frame once and hands it back to be cached.
+    function applyPoster(v, clip) {
+        window.api.getThumb(clip.path, clip.time).then(function (url) {
+            if (url && v.isConnected) {
+                v.poster = url;
+            } else if (!thumbTried[clip.path]) {
+                thumbTried[clip.path] = true;
+                captureThumb(v, clip);
+            }
+        }).catch(function () { /* a missing poster costs a black frame, nothing more */ });
+    }
+
+    function captureThumb(v, clip) {
+        var done = false;
+        function grab() {
+            if (done || !v.isConnected || !v.videoWidth) return;
+            done = true;
+            try {
+                var w = Math.min(640, v.videoWidth);
+                var h = Math.round(v.videoHeight * (w / v.videoWidth));
+                var c = document.createElement('canvas');
+                c.width = w;
+                c.height = h;
+                c.getContext('2d').drawImage(v, 0, 0, w, h);
+                window.api.saveThumb(clip.path, clip.time, c.toDataURL('image/png'));
+            } catch (e) { /* tainted or torn down, skip it */ }
+        }
+        // getThumb is a round trip to main, so the clip may already have data by
+        // the time this runs. Waiting on loadeddata alone misses those and the
+        // poster never gets cached.
+        if (v.readyState >= 2) grab();
+        else v.addEventListener('loadeddata', grab, { once: true });
+    }
+
+    // Waits for every tile on the page, then starts them on the same frame.
+    // The identity check is the guard against a page change landing mid-wait:
+    // an older page's resolve must not restart the new page's tiles.
+    function syncPlay() {
+        var mine = state.vids;
+        if (!mine.length) return;
+
+        Promise.all(mine.map(function (v) {
+            return new Promise(function (resolve) {
+                if (v.readyState >= 3) return resolve();
+                var t = setTimeout(finish, CANPLAY_TIMEOUT);
+                function finish() {
+                    clearTimeout(t);
+                    v.removeEventListener('canplay', finish);
+                    v.removeEventListener('error', finish);
+                    resolve();
+                }
+                v.addEventListener('canplay', finish);
+                v.addEventListener('error', finish);
+            });
+        })).then(function () {
+            if (state.vids !== mine) return;
+            mine.forEach(function (v) {
+                try {
+                    v.currentTime = 0;
+                    if (!state.paused) {
+                        var p = v.play();
+                        if (p && p.catch) p.catch(function () { /* autoplay refused, R retries */ });
+                    }
+                } catch (e) { /* a bad tile must not stop the rest */ }
+            });
+        });
+    }
+
+    function updateChrome(vis, pages) {
+        vis = vis || visible();
+        pages = pages || pageCount(vis);
+
+        var total = state.all.length;
+        var shown = vis.length;
+        $('count').textContent = shown === total
+            ? total + (total === 1 ? ' clip' : ' clips')
+            : shown + ' of ' + total;
+
+        $('pager').textContent = shown ? (state.page + 1) + ' / ' + pages : '0 / 0';
+        $('prev').disabled = state.page <= 0;
+        $('next').disabled = state.page >= pages - 1;
+        $('mute').textContent = state.muted ? 'Muted' : 'Sound';
+        $('mute').classList.toggle('on', !state.muted);
+        $('pause').textContent = state.paused ? 'Play' : 'Pause';
+        $('pause').classList.toggle('on', state.paused);
+    }
+
+    // ---------------------------------------------------------- paging
+
+    function go(delta) {
+        var vis = visible();
+        var pages = pageCount(vis);
+        var next = state.page + delta;
+        if (next < 0 || next >= pages) return;
+        state.page = next;
+        save({ page: state.page });
+        render();
+    }
+
+    // ---------------------------------------------------------- solo
+
+    function openSolo(index) {
+        var vis = visible();
+        if (index < 0 || index >= vis.length) return;
+        var clip = vis[index];
+
+        state.soloIndex = index;
+        state.soloUrl = clipUrl(clip.path);
+        solovid.muted = state.muted;
+        solovid.src = state.soloUrl;
+        solocap.textContent = clip.rel;
+        document.body.classList.add('solo');
+
+        var p = solovid.play();
+        if (p && p.catch) p.catch(function () { /* same as the grid */ });
+    }
+
+    function stepSolo(delta) {
+        if (state.soloIndex < 0) return;
+        var vis = visible();
+        var next = state.soloIndex + delta;
+        if (next < 0 || next >= vis.length) return;
+        openSolo(next);
+    }
+
+    // Closing returns to the page holding that clip, which is not always the
+    // page it was opened from once the arrows have walked across a boundary.
+    function closeSolo() {
+        if (state.soloIndex < 0) return;
+        var index = state.soloIndex;
+
+        document.body.classList.remove('solo');
+        try {
+            solovid.pause();
+            solovid.removeAttribute('src');
+            solovid.load();
+        } catch (e) { /* nothing to do */ }
+        state.soloIndex = -1;
+        state.soloUrl = null;
+
+        var target = Math.floor(index / state.per);
+        if (target !== state.page) {
+            state.page = target;
+            save({ page: state.page });
+            render();
+        }
+    }
+
+    // ---------------------------------------------------------- controls
+
+    function setMuted(m) {
+        state.muted = m;
+        state.vids.forEach(function (v) { v.muted = m; });
+        solovid.muted = m;
+        save({ muted: m });
+        updateChrome();
+    }
+
+    function setPaused(p) {
+        state.paused = p;
+        state.vids.forEach(function (v) {
+            try {
+                if (p) v.pause();
+                else { var q = v.play(); if (q && q.catch) q.catch(function () {}); }
+            } catch (e) { /* skip */ }
+        });
+        try {
+            if (state.soloIndex >= 0) {
+                if (p) solovid.pause();
+                else { var s = solovid.play(); if (s && s.catch) s.catch(function () {}); }
+            }
+        } catch (e) { /* skip */ }
+        updateChrome();
+    }
+
+    function toggleFullscreen() {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else document.documentElement.requestFullscreen().catch(function () {});
+    }
+
+    function save(partial) {
+        try {
+            window.api.saveState(partial);
+        } catch (e) { /* settings that will not save are not worth a crash */ }
+    }
+
+    // ---------------------------------------------------------- events
+
+    $('pick').addEventListener('click', choose);
+    $('pick2').addEventListener('click', choose);
+
+    function choose() {
+        window.api.pickFolder().then(function (folder) {
+            if (folder) {
+                state.page = 0;
+                load(folder);
+            }
+        });
+    }
+
+    $('filter').addEventListener('input', function (e) {
+        state.filter = e.target.value;
+        state.page = 0;
+        render();
+    });
+
+    // The dropdowns give focus back so the single-key shortcuts keep working
+    // straight after a change.
+    $('per').addEventListener('change', function (e) {
+        state.per = parseInt(e.target.value, 10) || 8;
+        state.page = 0;
+        save({ per: state.per, page: 0 });
+        e.target.blur();
+        render();
+    });
+
+    $('sort').addEventListener('change', function (e) {
+        state.sort = e.target.value;
+        state.page = 0;
+        save({ sort: state.sort, page: 0 });
+        e.target.blur();
+        render();
+    });
+
+    $('mute').addEventListener('click', function () { setMuted(!state.muted); });
+    $('pause').addEventListener('click', function () { setPaused(!state.paused); });
+    $('resync').addEventListener('click', function () { syncPlay(); });
+    $('full').addEventListener('click', toggleFullscreen);
+    $('prev').addEventListener('click', function () { go(-1); });
+    $('next').addEventListener('click', function () { go(1); });
+    solo.addEventListener('click', closeSolo);
+
+    document.addEventListener('keydown', function (e) {
+        var t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT')) return;
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+        switch (e.key) {
+            case 'ArrowLeft':
+                e.preventDefault();
+                if (state.soloIndex >= 0) stepSolo(-1); else go(-1);
+                return;
+            case 'ArrowRight':
+                e.preventDefault();
+                if (state.soloIndex >= 0) stepSolo(1); else go(1);
+                return;
+            case 'Escape':
+                if (state.soloIndex >= 0) { e.preventDefault(); closeSolo(); }
+                return;
+            case ' ':
+                e.preventDefault();
+                setPaused(!state.paused);
+                return;
+        }
+
+        var k = e.key.toLowerCase();
+        if (k === 'r') { e.preventDefault(); syncPlay(); return; }
+        if (k === 'm') { e.preventDefault(); setMuted(!state.muted); return; }
+        if (k === 'f') { e.preventDefault(); toggleFullscreen(); return; }
+
+        if (e.key >= '1' && e.key <= '9') {
+            var slot = parseInt(e.key, 10) - 1;
+            if (slot < state.vids.length) {
+                e.preventDefault();
+                openSolo(state.page * state.per + slot);
+            }
+        }
+    });
+
+    window.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        document.body.classList.add('drop');
+    });
+
+    window.addEventListener('dragleave', function (e) {
+        if (e.relatedTarget === null) document.body.classList.remove('drop');
+    });
+
+    window.addEventListener('drop', function (e) {
+        e.preventDefault();
+        document.body.classList.remove('drop');
+        var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!f) return;
+        var p = window.api.pathForFile(f);
+        if (!p) return;
+        window.api.setFolderFromDrop(p).then(function (folder) {
+            if (folder) {
+                state.page = 0;
+                load(folder);
+            }
+        });
+    });
+
+    window.api.onClipsChanged(function () {
+        window.api.listClips().then(function (list) {
+            setClips(list);
+        }).catch(function () {});
+    });
+
+    // ---------------------------------------------------------- boot
+
+    function load(folder) {
+        $('emptymsg').textContent = 'Reading ' + folder;
+        document.body.classList.add('empty');
+        window.api.listClips(folder).then(function (list) {
+            if (!list.length) $('emptymsg').textContent = 'No clips under ' + folder;
+            setClips(list);
+        }).catch(function () {
+            $('emptymsg').textContent = 'Could not read ' + folder;
+        });
+    }
+
+    window.api.getState().then(function (s) {
+        state.per = s.per || 8;
+        state.sort = s.sort || 'name';
+        state.muted = s.muted !== false;
+        state.page = s.page || 0;
+
+        $('per').value = String(state.per);
+        $('sort').value = state.sort;
+        updateChrome([], 1);
+
+        if (s.folder) load(s.folder);
+        else document.body.classList.add('empty');
+    });
+})();
+</script>
