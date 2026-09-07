@@ -59,7 +59,16 @@ Keys are ignored while the filter box or a dropdown has focus, and the
 dropdowns hand focus back on change so the shortcuts keep working right
 after you use one.
 
-Fill is the one worth knowing about. Tiles letterbox by default, so you
+Hovering a tile brings up a scrub bar along its bottom edge. Click or
+drag it to move through that clip, and it seeks live while you drag.
+Clicking the bar never opens the clip full screen, so scrubbing and
+soloing don't fight each other. Move the pointer away and the bar stays
+up for a second and a half before fading, which is long enough to cross
+a gap between two tiles without it flickering. A clip whose duration
+can't be read doesn't get a bar, because there would be nothing to scrub
+along.
+
+Fill is the other one worth knowing about. Tiles letterbox by default, so you
 see the whole frame on black. Fill makes every tile edge to edge and
 crops whatever doesn't fit, which is what you want when you're reading
 the grid as a wall rather than judging a single frame. Solo follows the

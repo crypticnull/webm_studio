@@ -96,7 +96,7 @@
         position: absolute;
         left: 0;
         right: 0;
-        bottom: 0;
+        bottom: 11px;
         padding: 3px 6px;
         font-size: 11px;
         color: var(--dim);
@@ -110,6 +110,50 @@
     }
 
     .tile:hover .cap { opacity: 1; color: var(--ink); }
+
+    /* The scrubber. Hovering shows it at once, and the delay lives on the
+       resting rule, so leaving the tile fades it out a second and a half
+       later without a timer in JS. */
+    .scrub {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 11px;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity .2s linear 1.5s;
+        touch-action: none;
+    }
+
+    .tile:hover .scrub,
+    .scrub.dragging {
+        opacity: 1;
+        transition-delay: 0s;
+    }
+
+    /* A clip with no usable duration cannot be scrubbed, so it does not
+       pretend to offer it. */
+    .tile.nodur .scrub,
+    .tile.bad .scrub { display: none; }
+
+    .scrub .track {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 3px;
+        background: rgba(255, 255, 255, .2);
+    }
+
+    .scrub:hover .track,
+    .scrub.dragging .track { height: 5px; }
+
+    .scrub .played {
+        height: 100%;
+        width: 0;
+        background: var(--ink);
+    }
     .tile.bad .cap { opacity: 1; color: var(--bad); }
     .tile.bad video { outline: 1px solid var(--bad); outline-offset: -1px; }
 
@@ -290,6 +334,7 @@
     // Only the current page is ever decoding. This is the whole reason a folder
     // of 118 clips stays cheap, so nothing may hold a src past a page turn.
     function releaseUrls() {
+        liveBars.clear();
         state.vids.forEach(function (v) {
             try {
                 v.pause();
@@ -336,9 +381,13 @@
                 cap.textContent = clip.rel + " — can't decode";
             });
 
+            var scrub = buildScrub(tile, v);
+
             v.addEventListener('loadedmetadata', function () {
                 var d = fmtDuration(v.duration);
                 if (d) cap.textContent = clip.rel + '  ' + d;
+                // Without a real duration there is nothing to scrub along.
+                tile.classList.toggle('nodur', !(isFinite(v.duration) && v.duration > 0));
             });
 
             v.addEventListener('click', function () { openSolo(start + i); });
@@ -351,6 +400,7 @@
 
             tile.appendChild(v);
             tile.appendChild(cap);
+            tile.appendChild(scrub);
             grid.appendChild(tile);
             vids.push(v);
         });
@@ -359,6 +409,95 @@
         document.body.classList.toggle('empty', state.all.length === 0);
         syncPlay();
         updateChrome(vis, pages);
+    }
+
+    // ---------------------------------------------------------- scrubber
+
+    // One rAF loop drives every bar that is actually on screen, which is the
+    // hovered tile and anything mid drag, so a page of sixteen is not paying
+    // for fifteen invisible bars every frame.
+    var liveBars = new Set();
+    var rafId = 0;
+
+    function tickBars() {
+        rafId = 0;
+        liveBars.forEach(function (bar) {
+            var v = bar.video;
+            if (!v.isConnected) { liveBars.delete(bar); return; }
+            if (isFinite(v.duration) && v.duration > 0) {
+                bar.played.style.width = (v.currentTime / v.duration * 100) + '%';
+            }
+        });
+        if (liveBars.size) rafId = requestAnimationFrame(tickBars);
+    }
+
+    function startBar(bar) {
+        liveBars.add(bar);
+        if (!rafId) rafId = requestAnimationFrame(tickBars);
+    }
+
+    function buildScrub(tile, v) {
+        var scrub = document.createElement('div');
+        scrub.className = 'scrub';
+        var track = document.createElement('div');
+        track.className = 'track';
+        var played = document.createElement('div');
+        played.className = 'played';
+        track.appendChild(played);
+        scrub.appendChild(track);
+
+        var bar = { video: v, played: played };
+        var dragging = false;
+
+        function seekTo(clientX) {
+            if (!(isFinite(v.duration) && v.duration > 0)) return;
+            var r = scrub.getBoundingClientRect();
+            var frac = (clientX - r.left) / r.width;
+            frac = Math.max(0, Math.min(1, frac));
+            try {
+                v.currentTime = frac * v.duration;
+            } catch (e) { /* a clip mid teardown, nothing to seek */ }
+            played.style.width = (frac * 100) + '%';
+        }
+
+        // The bar only needs to move while it is visible, so hovering the tile
+        // is what starts it.
+        tile.addEventListener('mouseenter', function () { startBar(bar); });
+        tile.addEventListener('mouseleave', function () {
+            if (!dragging) liveBars.delete(bar);
+        });
+
+        scrub.addEventListener('pointerdown', function (e) {
+            if (e.button !== 0) return;
+            // Without this the tile underneath takes the click and opens solo.
+            e.preventDefault();
+            e.stopPropagation();
+            dragging = true;
+            scrub.classList.add('dragging');
+            startBar(bar);
+            try { scrub.setPointerCapture(e.pointerId); } catch (err) { /* fine */ }
+            seekTo(e.clientX);
+        });
+
+        scrub.addEventListener('pointermove', function (e) {
+            if (dragging) seekTo(e.clientX);
+        });
+
+        function endDrag(e) {
+            if (!dragging) return;
+            dragging = false;
+            scrub.classList.remove('dragging');
+            try { scrub.releasePointerCapture(e.pointerId); } catch (err) { /* fine */ }
+            if (!tile.matches(':hover')) liveBars.delete(bar);
+        }
+
+        scrub.addEventListener('pointerup', endDrag);
+        scrub.addEventListener('pointercancel', endDrag);
+
+        // A click here is a seek, never a solo.
+        scrub.addEventListener('click', function (e) { e.stopPropagation(); });
+
+        return scrub;
     }
 
     // Posters come from the cache in main. Where there is no ffmpeg the tile

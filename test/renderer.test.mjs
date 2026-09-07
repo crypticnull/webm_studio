@@ -337,6 +337,77 @@ test('C fills the tiles, cropping, and persists the choice', async () => {
     await reset();
 });
 
+test('the scrubber appears on hover and seeks where it is clicked', async () => {
+    const tile = page.locator('.tile').first();
+    const scrub = tile.locator('.scrub');
+
+    // An earlier test may have left the pointer on a tile, so park it off the
+    // grid and let the fade finish before claiming it rests hidden.
+    await page.mouse.move(5, 5);
+    await page.waitForFunction(() =>
+        parseFloat(getComputedStyle(document.querySelector('.scrub')).opacity) < 0.1,
+        null, { timeout: 4000 });
+
+    await tile.hover();
+    await page.waitForFunction(() =>
+        getComputedStyle(document.querySelector('.scrub')).opacity === '1', null, { timeout: 3000 });
+
+    // Paused, so currentTime only moves because the scrubber moved it.
+    await page.keyboard.press(' ');
+    await page.waitForFunction(() =>
+        [...document.querySelectorAll('.tile video')].every((v) => v.paused));
+
+    const box = await scrub.boundingBox();
+    const seekTo = async (frac) => {
+        await page.mouse.click(box.x + box.width * frac, box.y + box.height / 2);
+        await page.waitForTimeout(250);
+        return page.evaluate(() => {
+            const v = document.querySelector('.tile video');
+            return { t: v.currentTime, d: v.duration };
+        });
+    };
+
+    const early = await seekTo(0.2);
+    const late = await seekTo(0.75);
+
+    assert(isFinite(late.d) && late.d > 0, 'the clip needs a real duration to scrub');
+    assert(late.t > early.t, 'seeking right should land later, got ' + early.t + ' then ' + late.t);
+    assert(late.t > late.d * 0.4, 'a click at three quarters should land in the back half');
+
+    // A click on the bar is a seek, not a solo.
+    assert(!(await page.evaluate(() => document.body.classList.contains('solo'))),
+        'clicking the scrubber must not open solo');
+
+    // The bar reflects where the clip is.
+    const width = await page.evaluate(() => {
+        const p = document.querySelector('.scrub .played');
+        return p.getBoundingClientRect().width / p.parentElement.getBoundingClientRect().width;
+    });
+    assert(width > 0.4, 'the played bar should show the new position, got ' + width);
+
+    await page.keyboard.press(' ');
+    await page.waitForFunction(() =>
+        [...document.querySelectorAll('.tile video')].every((v) => !v.paused));
+    await reset();
+});
+
+test('the scrubber lingers, then fades once the pointer has left', async () => {
+    await page.locator('.tile').first().hover();
+    await page.waitForFunction(() =>
+        getComputedStyle(document.querySelector('.scrub')).opacity === '1', null, { timeout: 3000 });
+
+    await page.mouse.move(5, 5); // off the grid entirely
+    await page.waitForTimeout(600);
+    assert(await page.evaluate(() =>
+        parseFloat(getComputedStyle(document.querySelector('.scrub')).opacity) > 0.9),
+        'it should still be up well before the delay is out');
+
+    await page.waitForTimeout(1600);
+    await page.waitForFunction(() =>
+        parseFloat(getComputedStyle(document.querySelector('.scrub')).opacity) < 0.1, null, { timeout: 3000 });
+    await reset();
+});
+
 test('Space pauses and resumes every tile', async () => {
     await page.keyboard.press(' ');
     await page.waitForFunction(() => [...document.querySelectorAll('.tile video')].every((v) => v.paused));
