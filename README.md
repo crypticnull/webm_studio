@@ -25,6 +25,17 @@ Electron, which takes a minute, then asks once for the folder and never
 asks again. Every launch after that opens on the last folder, the last
 page, and the window where you left it.
 
+If npm is set to block install scripts, that first launch stops and says
+so, because Electron's postinstall is what downloads `electron.exe` and
+the install reports success without it. Two commands clear it:
+
+```
+npm --prefix X:\_CLAUDE\26_09_07_webm-studio install-scripts approve electron ; npm --prefix X:\_CLAUDE\26_09_07_webm-studio rebuild electron
+```
+
+`ffmpeg-static` is blocked the same way and is optional. Approve it the
+same way for sharper posters, or skip it and let the app draw its own.
+
 To work on it instead of just run it:
 
 ```

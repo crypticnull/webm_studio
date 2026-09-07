@@ -24,6 +24,27 @@ if not exist "%EXE%" (
     call npm install || (popd & pause & exit /b 1)
     popd
 )
+rem npm can be configured to block install scripts, and Electron's postinstall
+rem is the thing that downloads electron.exe. When that is blocked the install
+rem reports success and the binary is still missing, so check again rather than
+rem handing Windows a path that isn't there.
+if not exist "%EXE%" (
+    echo.
+    echo Electron is installed but its binary is missing.
+    echo.
+    echo npm blocked the postinstall script that downloads it. Approve it and
+    echo fetch the binary with these two, then run this launcher again:
+    echo.
+    echo     npm --prefix "%APP%." install-scripts approve electron
+    echo     npm --prefix "%APP%." rebuild electron
+    echo.
+    echo ffmpeg-static is blocked the same way. It's optional, and it only
+    echo makes the poster frames sharper, so approve it the same way or skip it
+    echo and let the app draw its own.
+    echo.
+    pause
+    exit /b 1
+)
 start "" "%EXE%" "%APP%."
 endlocal
 exit /b 0
