@@ -361,9 +361,19 @@ function assert(cond, msg) {
         console.log('renderer: skipped, playwright is not installed');
         process.exit(0);
     }
-    const browser = await pw.chromium.launch({
-        args: ['--autoplay-policy=no-user-gesture-required', '--mute-audio']
-    });
+    // The library installs with npm, but its browser does not. Without this the
+    // suite dies on a stack trace instead of saying the one thing that fixes it.
+    let browser;
+    try {
+        browser = await pw.chromium.launch({
+            args: ['--autoplay-policy=no-user-gesture-required', '--mute-audio']
+        });
+    } catch (err) {
+        console.log('renderer: skipped, Chromium is not installed for Playwright');
+        console.log('         run: npx playwright install chromium');
+        console.log('         (' + err.message.split('\n')[0] + ')');
+        process.exit(0);
+    }
 
     const dir = await makeClips(browser);
     const server = await serve(dir);

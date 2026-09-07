@@ -78,8 +78,16 @@ Electron, and only two, both of them in the test and not the app: the
 no handler for a scheme Electron registers, and the CSP is widened to
 match.
 
-The renderer suite skips itself with a message if Playwright isn't
-installed. Playwright is a dev dependency and ships in nothing.
+Playwright installs the library but not the browser it drives, so the
+renderer suite needs one more command the first time:
+
+```
+npx --prefix X:\_CLAUDE\26_09_07_webm-studio playwright install chromium
+```
+
+Without it that suite skips itself and says exactly that, rather than
+failing. Playwright is a dev dependency and ships in nothing. CI runs
+both suites on every push, on Ubuntu, against the lockfile.
 
 ## What the port changed, and nothing else
 
