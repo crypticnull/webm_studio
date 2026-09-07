@@ -1,0 +1,42 @@
+{
+  "name": "loop-viewer",
+  "productName": "Loop Viewer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Paged grid player for a folder of short looping clips.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable",
+    "test": "node test/run.mjs"
+  },
+  "devDependencies": {
+    "electron": "^37.0.0",
+    "electron-builder": "^25.1.8",
+    "playwright": "^1.49.0"
+  },
+  "optionalDependencies": {
+    "ffmpeg-static": "^5.2.0"
+  },
+  "build": {
+    "appId": "com.rodenbeck.loopviewer",
+    "productName": "Loop Viewer",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/ffmpeg-static/**"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "portable": {
+      "artifactName": "LoopViewer.exe"
+    }
+  }
+}
