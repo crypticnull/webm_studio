@@ -13,7 +13,7 @@
   "devDependencies": {
     "electron": "^37.0.0",
     "electron-builder": "^25.1.8",
-    "playwright": "^1.49.0"
+    "playwright": "1.56.1"
   },
   "optionalDependencies": {
     "ffmpeg-static": "^5.2.0"
