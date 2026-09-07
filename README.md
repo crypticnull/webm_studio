@@ -51,12 +51,19 @@ npm --prefix X:\_CLAUDE\26_09_07_webm-studio install ; npm --prefix X:\_CLAUDE\2
 | `Esc` | close solo, landing on the page holding that clip |
 | `Space` | pause and play everything |
 | `R` | restart the page together |
+| `C` | fill the tiles, cropping what doesn't fit |
 | `M` | mute |
 | `F` | fullscreen |
 
 Keys are ignored while the filter box or a dropdown has focus, and the
 dropdowns hand focus back on change so the shortcuts keep working right
 after you use one.
+
+Fill is the one worth knowing about. Tiles letterbox by default, so you
+see the whole frame on black. Fill makes every tile edge to edge and
+crops whatever doesn't fit, which is what you want when you're reading
+the grid as a wall rather than judging a single frame. Solo follows the
+same setting, and it survives a relaunch.
 
 ## Layout
 

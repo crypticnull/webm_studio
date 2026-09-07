@@ -20,6 +20,7 @@ const DEFAULTS = {
     per: 8,
     sort: 'name',
     muted: true,
+    fill: false,
     page: 0,
     bounds: null,
     maximized: false
@@ -335,13 +336,14 @@ function registerIpc() {
         per: config.per,
         sort: config.sort,
         muted: config.muted,
+        fill: config.fill,
         page: config.page,
         bounds: config.bounds
     }));
 
     ipcMain.handle('saveState', (_e, partial) => {
         if (!partial || typeof partial !== 'object') return;
-        for (const key of ['folder', 'per', 'sort', 'muted', 'page']) {
+        for (const key of ['folder', 'per', 'sort', 'muted', 'fill', 'page']) {
             if (key in partial) config[key] = partial[key];
         }
         saveConfig();

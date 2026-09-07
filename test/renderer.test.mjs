@@ -292,6 +292,51 @@ test('M toggles mute across the page and persists it', async () => {
     await page.waitForFunction(() => [...document.querySelectorAll('.tile video')].every((v) => v.muted));
 });
 
+test('C fills the tiles, cropping, and persists the choice', async () => {
+    const fitted = await page.evaluate(() =>
+        [...document.querySelectorAll('.tile video')].map((v) => getComputedStyle(v).objectFit));
+    assert(fitted.every((f) => f === 'contain'), 'tiles should start fitted');
+    assert((await page.locator('#fill').textContent()) === 'Fit');
+
+    await page.keyboard.press('c');
+    await page.waitForFunction(() =>
+        [...document.querySelectorAll('.tile video')].every((v) => getComputedStyle(v).objectFit === 'cover'));
+    assert((await page.locator('#fill').textContent()) === 'Fill');
+    assert(await page.evaluate(() => window.__saved.fill) === true, 'fill should persist');
+
+    // A tile in fill mode covers its cell rather than letterboxing inside it.
+    const covered = await page.evaluate(() => {
+        const v = document.querySelector('.tile video');
+        const tile = v.parentElement.getBoundingClientRect();
+        const box = v.getBoundingClientRect();
+        return Math.abs(box.width - tile.width) < 2 && Math.abs(box.height - tile.height) < 2;
+    });
+    assert(covered, 'the video box should fill its tile');
+
+    // It survives a re-render, because it rides on a body class and not the tile.
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => document.querySelectorAll('.tile').length === 4);
+    assert(await page.evaluate(() =>
+        [...document.querySelectorAll('.tile video')].every((v) => getComputedStyle(v).objectFit === 'cover')),
+        'fill should survive a page turn');
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction(() => document.querySelectorAll('.tile').length === 8);
+
+    // And solo fills too, so the mode is the same wherever a clip is shown.
+    await page.keyboard.press('1');
+    await page.waitForSelector('body.solo');
+    assert(await page.evaluate(() =>
+        getComputedStyle(document.getElementById('solovid')).objectFit === 'cover'),
+        'solo should fill too');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.body.classList.contains('solo'));
+
+    await page.keyboard.press('c');
+    await page.waitForFunction(() =>
+        [...document.querySelectorAll('.tile video')].every((v) => getComputedStyle(v).objectFit === 'contain'));
+    await reset();
+});
+
 test('Space pauses and resumes every tile', async () => {
     await page.keyboard.press(' ');
     await page.waitForFunction(() => [...document.querySelectorAll('.tile video')].every((v) => v.paused));
@@ -405,7 +450,7 @@ function assert(cond, msg) {
         window.__thumbs = 0;
         window.api = {
             pickFolder: async () => null,
-            getState: async () => ({ folder: '/clips', per: 8, sort: 'name', muted: true, page: 0, bounds: null }),
+            getState: async () => ({ folder: '/clips', per: 8, sort: 'name', muted: true, fill: false, page: 0, bounds: null }),
             saveState: async (p) => { Object.assign(window.__saved, p); },
             listClips: async () => window.__clips,
             getThumb: async () => null,
