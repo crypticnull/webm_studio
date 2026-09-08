@@ -322,12 +322,19 @@ test('C fills the tiles, cropping, and persists the choice', async () => {
     await page.keyboard.press('ArrowLeft');
     await page.waitForFunction(() => document.querySelectorAll('.tile').length === 8);
 
-    // And solo fills too, so the mode is the same wherever a clip is shown.
+    // Solo fills too, but as a zoom rather than a crop, so the picture covers
+    // the window instead of object-fit trimming it.
     await page.keyboard.press('1');
     await page.waitForSelector('body.solo');
+    await page.waitForFunction(() => {
+        const v = document.getElementById('solovid');
+        const host = document.getElementById('solo').getBoundingClientRect();
+        const r = v.getBoundingClientRect();
+        return v.videoWidth > 0 && r.width >= host.width - 1 && r.height >= host.height - 1;
+    }, null, { timeout: 15000 });
     assert(await page.evaluate(() =>
-        getComputedStyle(document.getElementById('solovid')).objectFit === 'cover'),
-        'solo should fill too');
+        getComputedStyle(document.getElementById('solovid')).objectFit === 'contain'),
+        'solo should not be cropping with object-fit, that is what trapped the edges');
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.body.classList.contains('solo'));
 
@@ -692,6 +699,57 @@ test('the wheel zooms solo, anchored to the pointer, and pans once in', async ()
 
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.body.classList.contains('solo'));
+    await reset();
+});
+
+// The bug: fill used object-fit: cover in solo, which re-crops to whatever the
+// box is. Zooming out shrank the box and the crop came with it, so the trimmed
+// edges were gone for good.
+test('zooming out in fill mode gives the cropped edges back', async () => {
+    await page.keyboard.press('c');
+    await page.waitForFunction(() => document.body.classList.contains('fill'));
+
+    await page.keyboard.press('1');
+    await page.waitForSelector('body.solo');
+    await page.waitForFunction(() => {
+        const v = document.getElementById('solovid');
+        return v.videoWidth > 0 && v.offsetWidth > 0 &&
+            new DOMMatrix(getComputedStyle(v).transform).a > 1.0001;
+    }, null, { timeout: 15000 });
+
+    const read = () => page.evaluate(() => {
+        const v = document.getElementById('solovid');
+        return {
+            r: v.getBoundingClientRect().toJSON(),
+            host: document.getElementById('solo').getBoundingClientRect().toJSON(),
+            fit: getComputedStyle(v).objectFit
+        };
+    });
+
+    const covered = await read();
+    assert(covered.fit === 'contain', 'solo should be showing the whole picture, scaled');
+    assert(covered.r.width >= covered.host.width - 1 && covered.r.height >= covered.host.height - 1,
+        'fill should still cover the window');
+    // Covering means some of it is off screen, which is the part to win back.
+    assert(covered.r.width > covered.host.width + 1 || covered.r.height > covered.host.height + 1,
+        'something should be cropped to begin with');
+
+    const box = await page.locator('#solo').boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 900);
+    await page.waitForTimeout(400);
+
+    const out = await read();
+    assert(out.r.width < covered.r.width - 1, 'the picture should have got smaller');
+    // The whole frame is on screen now, edges and all, which is what cover
+    // could never give back.
+    assert(out.r.width <= out.host.width + 1 && out.r.height <= out.host.height + 1,
+        'zooming out should reveal the edges rather than keep covering');
+
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.body.classList.contains('solo'));
+    await page.keyboard.press('c');
+    await page.waitForFunction(() => !document.body.classList.contains('fill'));
     await reset();
 });
 

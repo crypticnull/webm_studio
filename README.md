@@ -62,7 +62,9 @@ after you use one.
 
 Solo fills the window. A clip smaller than the screen is scaled up to
 fit rather than sitting at its own resolution in the middle of all that
-black, and `C` crops it to fill edge to edge instead.
+black, and `C` opens it covering the window instead, with the overflow
+off screen. That covering is a zoom level rather than a crop, so
+scrolling out from it gives the trimmed edges back.
 
 Solo carries a step arrow on each side. They answer to movement rather
 than to hover, so they're there the moment the mouse does anything and
