@@ -84,14 +84,6 @@
        rebuilt to change how it sits. */
     body.fill .tile video { object-fit: cover; }
 
-    body.fill #solo video {
-        width: 100%;
-        height: 100%;
-        max-width: none;
-        max-height: none;
-        object-fit: cover;
-    }
-
     /* File names are noise in a grid you read as a wall, so the caption stays
        out of the way and only speaks up when a tile cannot decode. It keeps
        the path as its text either way, which is what that message is built
@@ -825,14 +817,6 @@
         var vw = solovid.videoWidth;
         var vh = solovid.videoHeight;
 
-        if (state.fill) {
-            // Fill mode wants the container and a cropped picture, which the
-            // stylesheet already says. Inline sizes would only fight it.
-            solovid.style.width = '';
-            solovid.style.height = '';
-            return;
-        }
-
         if (!vw || !vh) return;
         var host = solo.getBoundingClientRect();
         if (!host.width || !host.height) return;
@@ -909,6 +893,18 @@
             'translate(' + panX + 'px, ' + panY + 'px) scale(' + zoom + ')';
     }
 
+    // Fill in solo is a zoom level, not a crop. object-fit: cover re-crops the
+    // picture to whatever the box is, so shrinking the box only shrank the same
+    // crop and the trimmed edges could never come back. Expressed as the scale
+    // that covers the window, zooming out from it reveals them the way it
+    // should, and zooming in still works from there.
+    function soloBaseZoom() {
+        if (!state.fill) return 1;
+        var b = soloBase();
+        if (!b.w || !b.h) return 1;
+        return Math.max(b.host.width / b.w, b.host.height / b.h);
+    }
+
     function resetZoom() {
         zoom = 1;
         panX = 0;
@@ -917,6 +913,17 @@
         panMoved = false;
         document.body.classList.remove('zoomed', 'panning');
         solovid.style.transform = '';
+
+        // Back to how this clip opened, which in fill mode is covering the
+        // window rather than fitted inside it.
+        var base = soloBaseZoom();
+        if (base > 1.0001) {
+            zoom = base;
+            var b = soloBase();
+            centrePan(b);
+            clampPan(b);
+            applyZoom();
+        }
     }
 
     function zoomAt(clientX, clientY, factor) {
@@ -1116,6 +1123,9 @@
     solovid.addEventListener('loadedmetadata', function () {
         solo.classList.toggle('nodur', !(isFinite(solovid.duration) && solovid.duration > 0));
         sizeSolo();
+        // openSolo resets before the clip has said how big it is, so the fill
+        // baseline can only be worked out here.
+        resetZoom();
     });
 
     document.addEventListener('keydown', function (e) {
