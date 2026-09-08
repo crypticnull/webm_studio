@@ -586,6 +586,25 @@ test('only the current page holds a src', async () => {
     assert(live === 8, 'expected exactly the 8 visible tiles to hold a src, got ' + live);
 });
 
+test('file names stay hidden, and nothing is left cut off above the bar', async () => {
+    const shown = await page.evaluate(() =>
+        [...document.querySelectorAll('.tile .cap')].filter((c) => getComputedStyle(c).display !== 'none').length);
+    assert(shown === 0, 'captions should be out of the way, ' + shown + ' were showing');
+
+    // The caption still carries the path, which is what the decode message is
+    // built from and what the sort assertions read.
+    const text = await page.locator('.cap').first().textContent();
+    assert(text && text.length, 'the caption should still hold its path');
+
+    // The gap that broke the gradient was a caption held off the bottom edge.
+    const gap = await page.evaluate(() =>
+        parseFloat(getComputedStyle(document.querySelector('.tile .cap')).bottom));
+    assert(gap === 0, 'the caption should sit on the bottom edge, got ' + gap);
+    assert(await page.evaluate(() =>
+        parseFloat(getComputedStyle(document.getElementById('solocap')).bottom) === 0),
+        'the solo caption should reach the bottom edge too');
+});
+
 test('a clip that cannot decode is marked rather than swallowing the page', async () => {
     await page.evaluate(() => {
         window.__clips = window.__clips.concat([
@@ -598,6 +617,10 @@ test('a clip that cannot decode is marked rather than swallowing the page', asyn
     await page.waitForSelector('.tile.bad', { timeout: 15000 });
     const cap = await page.locator('.cap').first().textContent();
     assert(cap.includes("can't decode"), 'expected the decode caption, got ' + cap);
+    // Hidden for a good tile, but this is the one case worth saying out loud.
+    assert(await page.evaluate(() =>
+        getComputedStyle(document.querySelector('.tile.bad .cap')).display !== 'none'),
+        'a tile that cannot decode should still say so');
     await reset();
 });
 
