@@ -92,24 +92,24 @@
         object-fit: cover;
     }
 
+    /* File names are noise in a grid you read as a wall, so the caption stays
+       out of the way and only speaks up when a tile cannot decode. It keeps
+       the path as its text either way, which is what that message is built
+       from. */
     .cap {
+        display: none;
         position: absolute;
         left: 0;
         right: 0;
-        bottom: 11px;
+        bottom: 0;
         padding: 3px 6px;
         font-size: 11px;
-        color: var(--dim);
-        background: linear-gradient(transparent, rgba(0, 0, 0, .85));
-        opacity: .35;
-        transition: opacity .12s;
         pointer-events: none;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
     }
 
-    .tile:hover .cap { opacity: 1; color: var(--ink); }
 
     /* The scrubber. Hovering shows it at once, and the delay lives on the
        resting rule, so leaving the tile fades it out a second and a half
@@ -160,7 +160,13 @@
     /* Solo has the room for a bar that is easier to hit. */
     #solo .scrub { height: 16px; }
     #solo .scrub .track { height: 4px; }
-    .tile.bad .cap { opacity: 1; color: var(--bad); }
+    /* A bad tile has no scrub bar under it, so this gradient runs clean to
+       the bottom edge. */
+    .tile.bad .cap {
+        display: block;
+        color: var(--bad);
+        background: linear-gradient(transparent, rgba(0, 0, 0, .85));
+    }
     .tile.bad video { outline: 1px solid var(--bad); outline-offset: -1px; }
 
     #empty {
@@ -193,8 +199,10 @@
         position: fixed;
         left: 0;
         right: 0;
-        bottom: 11px;
-        padding: 8px 12px;
+        bottom: 0;
+        /* Padding lifts the text clear of the scrub bar while the gradient
+           still runs all the way down, so there is no seam. */
+        padding: 8px 12px 24px;
         font-size: 12px;
         color: var(--dim);
         background: linear-gradient(transparent, rgba(0, 0, 0, .9));

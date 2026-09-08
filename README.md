@@ -59,6 +59,10 @@ Keys are ignored while the filter box or a dropdown has focus, and the
 dropdowns hand focus back on change so the shortcuts keep working right
 after you use one.
 
+Tiles carry no file name. The grid is there to be read as a wall, and a
+caption under every tile is noise, so the only thing one ever says is
+that a clip could not be decoded. Solo still names the clip it's showing.
+
 Hovering a tile brings up a scrub bar along its bottom edge. Click or
 drag it to move through that clip, and it seeks live while you drag. The
 drag takes the clip and hands it back on release, because seeking a clip
