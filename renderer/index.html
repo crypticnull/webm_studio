@@ -844,7 +844,7 @@
 
     // ---------------------------------------------------------- zoom
 
-    var ZOOM_MIN = 1;
+    var ZOOM_MIN = 0.2;
     var ZOOM_MAX = 8;
     var zoom = 1;
     var panX = 0;
@@ -884,8 +884,17 @@
         panY = fit(panY, b.host.top, b.host.bottom, b.top, b.h * zoom);
     }
 
+    // Centres the picture in the window at the current zoom.
+    function centrePan(b) {
+        panX = b.host.left + (b.host.width - b.w * zoom) / 2 - b.left;
+        panY = b.host.top + (b.host.height - b.h * zoom) / 2 - b.top;
+    }
+
     function applyZoom() {
-        if (zoom <= 1.0001) {
+        // Landing back on a fit clears the transform outright rather than
+        // leaving scale one with a pan still on it. The epsilon is because the
+        // wheel arrives at one by multiplying, not by being told to.
+        if (Math.abs(zoom - 1) < 0.002) {
             zoom = 1;
             panX = 0;
             panY = 0;
@@ -893,7 +902,9 @@
             document.body.classList.remove('zoomed');
             return;
         }
-        document.body.classList.add('zoomed');
+        // Only past a fit is there anything to drag, so only then does the
+        // picture offer to be dragged.
+        document.body.classList.toggle('zoomed', zoom > 1);
         solovid.style.transform =
             'translate(' + panX + 'px, ' + panY + 'px) scale(' + zoom + ')';
     }
@@ -925,7 +936,10 @@
         panY = cy - (cy - panY) * k;
         zoom = next;
 
-        clampPan(b);
+        // Under a fit the whole picture is on screen already, so anchoring
+        // would only shove it into a corner for no gain.
+        if (zoom < 1) centrePan(b);
+        else clampPan(b);
         applyZoom();
     }
 
@@ -1093,6 +1107,7 @@
         if (state.soloIndex < 0) return;
         sizeSolo();
         if (zoom > 1) { clampPan(soloBase()); applyZoom(); }
+        else if (zoom < 1) { centrePan(soloBase()); applyZoom(); }
     });
 
     // Solo gets the same bar as a tile, built once because the element is
