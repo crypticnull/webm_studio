@@ -678,14 +678,77 @@ test('the wheel zooms solo, anchored to the pointer, and pans once in', async ()
         document.getElementById('solovid').getBoundingClientRect().x);
     assert(afterPan < before - 10, 'the picture should have moved with the drag');
 
-    // Zooming back out lands at fit, with the transform cleared rather than
-    // left sitting at scale one with a stale pan.
+    // Zooming out carries on past the fit, so it is 0 that puts it back and
+    // clears the transform rather than leaving scale one with a stale pan.
     await page.mouse.wheel(0, 1400);
     await page.waitForFunction(() => !document.body.classList.contains('zoomed'),
         null, { timeout: 3000 });
-    const out = await state();
-    assert(out.t === 'none' || out.t === 'matrix(1, 0, 0, 1, 0, 0)',
-        'zooming out should clear the transform, got ' + out.t);
+
+    await page.keyboard.press('0');
+    await page.waitForFunction(() => {
+        const t = getComputedStyle(document.getElementById('solovid')).transform;
+        return t === 'none' || t === 'matrix(1, 0, 0, 1, 0, 0)';
+    }, null, { timeout: 3000 });
+
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.body.classList.contains('solo'));
+    await reset();
+});
+
+test('the wheel goes under a fit too, centred, and floors', async () => {
+    await page.keyboard.press('1');
+    await page.waitForSelector('body.solo');
+    await page.waitForFunction(() => {
+        const v = document.getElementById('solovid');
+        return v.videoWidth > 0 && v.offsetWidth > 0;
+    }, null, { timeout: 15000 });
+
+    const box = await page.locator('#solo').boundingBox();
+    await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+
+    const read = () => page.evaluate(() => {
+        const v = document.getElementById('solovid');
+        const host = document.getElementById('solo').getBoundingClientRect();
+        const r = v.getBoundingClientRect();
+        return {
+            scale: new DOMMatrix(getComputedStyle(v).transform).a,
+            r: r.toJSON(),
+            host: host.toJSON(),
+            zoomed: document.body.classList.contains('zoomed')
+        };
+    });
+
+    await page.mouse.wheel(0, 500);
+    await page.waitForFunction(() =>
+        new DOMMatrix(getComputedStyle(document.getElementById('solovid')).transform).a < 0.95,
+        null, { timeout: 3000 });
+
+    const small = await read();
+    assert(small.scale < 1, 'the wheel should go under a fit, got ' + small.scale);
+    assert(small.r.width < small.host.width, 'the picture should be smaller than the window');
+
+    // Under a fit the whole picture is visible, so it sits centred rather than
+    // wherever anchoring to an off-centre cursor would have left it.
+    const dx = (small.r.x - small.host.x) - (small.host.right - small.r.right);
+    const dy = (small.r.y - small.host.y) - (small.host.bottom - small.r.bottom);
+    assert(Math.abs(dx) < 3, 'should be centred across, off by ' + dx);
+    assert(Math.abs(dy) < 3, 'should be centred down, off by ' + dy);
+
+    // Nothing to drag under a fit, so it does not offer to be dragged.
+    assert(!small.zoomed, 'the grab cursor belongs to zoomed in, not out');
+
+    // It floors rather than shrinking away to nothing.
+    for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 900);
+    await page.waitForTimeout(300);
+    const floored = await read();
+    assert(floored.scale >= 0.19, 'zoom out should floor, got ' + floored.scale);
+    assert(floored.r.width > 10, 'the picture should still be there');
+
+    await page.keyboard.press('0');
+    await page.waitForFunction(() => {
+        const t = getComputedStyle(document.getElementById('solovid')).transform;
+        return t === 'none' || t === 'matrix(1, 0, 0, 1, 0, 0)';
+    }, null, { timeout: 3000 });
 
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.body.classList.contains('solo'));

@@ -71,12 +71,14 @@ past the end of the list is dead rather than missing. The arrow keys do
 the same thing without reaching for them.
 
 In solo, the scroll wheel zooms, anchored to whatever is under the
-pointer, up to eight times. Past a fit, drag to pan, and the picture
-stops where its edge would come inside the frame rather than sliding off
-into nothing. `0` puts it back, and so does zooming out, closing solo,
-or stepping to the next clip, because carrying a zoom to another clip
-means arriving somewhere with no idea where you are. Scaling past the
-source resolution is the point, so it gets soft rather than refusing.
+pointer, from a fifth of a fit up to eight times it. Past a fit, drag to
+pan, and the picture stops where its edge would come inside the frame
+rather than sliding off into nothing. Under a fit the whole thing is on
+screen anyway, so it sits centred and there is nothing to drag. `0` puts
+it back, and so does closing solo or stepping to the next clip, because
+carrying a zoom to another clip means arriving somewhere with no idea
+where you are. Scaling past the source resolution is the point, so it
+gets soft rather than refusing.
 
 Tiles carry no file name. The grid is there to be read as a wall, and a
 caption under every tile is noise, so the only thing one ever says is
