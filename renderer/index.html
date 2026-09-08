@@ -452,10 +452,16 @@
         function seekTo(clientX) {
             if (!(isFinite(v.duration) && v.duration > 0)) return;
             var r = scrub.getBoundingClientRect();
+            if (!r.width) return;
             var frac = (clientX - r.left) / r.width;
+            if (!isFinite(frac)) return;
             frac = Math.max(0, Math.min(1, frac));
+
+            // Landing exactly on the end wraps a looping clip straight back to
+            // zero, which reads as the scrubber refusing to work at all.
+            var t = Math.min(frac * v.duration, Math.max(0, v.duration - 0.05));
             try {
-                v.currentTime = frac * v.duration;
+                v.currentTime = t;
             } catch (e) { /* a clip mid teardown, nothing to seek */ }
             played.style.width = (frac * 100) + '%';
         }

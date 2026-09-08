@@ -374,6 +374,13 @@ test('the scrubber appears on hover and seeks where it is clicked', async () => 
     assert(late.t > early.t, 'seeking right should land later, got ' + early.t + ' then ' + late.t);
     assert(late.t > late.d * 0.4, 'a click at three quarters should land in the back half');
 
+    // The far right is the trap: setting currentTime to exactly the duration
+    // wraps a looping clip straight back to zero, which reads as the scrubber
+    // not working at all.
+    const edge = await seekTo(0.99);
+    assert(edge.t > edge.d * 0.5,
+        'a click at the far right should stay near the end, not wrap to zero, got ' + edge.t);
+
     // A click on the bar is a seek, not a solo.
     assert(!(await page.evaluate(() => document.body.classList.contains('solo'))),
         'clicking the scrubber must not open solo');

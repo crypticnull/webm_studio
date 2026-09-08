@@ -5,13 +5,13 @@
 // touches the network. The only files ever read are the ones under the folder
 // the user picked.
 
-const { app, BrowserWindow, dialog, ipcMain, protocol, net } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, protocol } = require('electron');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { pathToFileURL } = require('node:url');
 const { execFile } = require('node:child_process');
+const { Readable } = require('node:stream');
 
 const VIDEO_RE = /\.(webm|mp4|m4v|mov|ogv|ogg|mkv|avi)$/i;
 
@@ -26,9 +26,8 @@ const DEFAULTS = {
     maximized: false
 };
 
-// clip:// is registered as a standard scheme so URL parsing behaves and
-// net.fetch can answer range requests. Range matters: without it, seeking and
-// currentTime = 0 misbehave on the larger clips.
+// clip:// is registered as a standard scheme so URL parsing behaves. The
+// handler below answers Range itself, which is what seeking rides on.
 protocol.registerSchemesAsPrivileged([{
     scheme: 'clip',
     privileges: { standard: true, supportFetchAPI: true, stream: true, bypassCSP: false }
@@ -80,6 +79,52 @@ function saveConfigNow() {
 // decoded back in the handler.
 function clipUrl(p) {
     return 'clip://local/' + encodeURIComponent(String(p).replace(/\\/g, '/'));
+}
+
+const MIME = {
+    '.webm': 'video/webm',
+    '.mp4': 'video/mp4',
+    '.m4v': 'video/mp4',
+    '.mov': 'video/quicktime',
+    '.ogv': 'video/ogg',
+    '.ogg': 'video/ogg',
+    '.mkv': 'video/x-matroska',
+    '.avi': 'video/x-msvideo',
+    '.png': 'image/png'
+};
+
+function mimeFor(p) {
+    return MIME[path.extname(String(p)).toLowerCase()] || 'application/octet-stream';
+}
+
+// Range parsing, kept pure so it can be tested without a window. A video
+// element asks for "bytes=start-", "bytes=start-end" and occasionally
+// "bytes=-suffix", and it treats a source that answers any of them wrong as
+// one it cannot seek in at all.
+function parseRange(header, size) {
+    if (!header) return null;
+    const m = /^bytes=(\d*)-(\d*)$/.exec(String(header).trim());
+    if (!m) return null;
+    const hasStart = m[1] !== '';
+    const hasEnd = m[2] !== '';
+    if (!hasStart && !hasEnd) return null;
+
+    let start;
+    let end;
+    if (!hasStart) {
+        // A suffix range: the last N bytes.
+        const n = parseInt(m[2], 10);
+        if (!n) return 'unsatisfiable';
+        start = Math.max(0, size - n);
+        end = size - 1;
+    } else {
+        start = parseInt(m[1], 10);
+        end = hasEnd ? parseInt(m[2], 10) : size - 1;
+    }
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+    if (end >= size) end = size - 1;
+    if (start > end || start >= size || start < 0) return 'unsatisfiable';
+    return { start, end };
 }
 
 // ---------------------------------------------------------------- scanning
@@ -226,6 +271,65 @@ async function saveThumb(p, mtime, dataUrl) {
     } catch {
         return null;
     }
+}
+
+// ---------------------------------------------------------------- serving
+
+// Files are served straight off disk rather than handed to net.fetch on a
+// file:// URL, because that does not answer a Range request, and a video
+// element treats a source it cannot range-request as one it cannot seek in.
+// Seeking then snaps back to the start, which is exactly what the handoff
+// warned this would look like.
+async function serveClip(req) {
+    let p;
+    try {
+        p = decodeURIComponent(new URL(req.url).pathname.replace(/^\//, ''));
+    } catch {
+        return new Response(null, { status: 400 });
+    }
+
+    let st;
+    try {
+        st = await fsp.stat(p);
+    } catch {
+        return new Response(null, { status: 404 });
+    }
+    if (!st.isFile()) return new Response(null, { status: 404 });
+
+    const headers = {
+        'Content-Type': mimeFor(p),
+        'Accept-Ranges': 'bytes',
+        // The poster fallback draws a tile into a canvas and reads it back,
+        // which taints unless the clip is explicitly shareable.
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-cache'
+    };
+
+    const body = (start, end) => Readable.toWeb(fs.createReadStream(p, { start, end }));
+    const range = parseRange(req.headers.get('range'), st.size);
+
+    if (range === 'unsatisfiable') {
+        return new Response(null, {
+            status: 416,
+            headers: { ...headers, 'Content-Range': 'bytes */' + st.size }
+        });
+    }
+
+    if (range) {
+        return new Response(body(range.start, range.end), {
+            status: 206,
+            headers: {
+                ...headers,
+                'Content-Range': 'bytes ' + range.start + '-' + range.end + '/' + st.size,
+                'Content-Length': String(range.end - range.start + 1)
+            }
+        });
+    }
+
+    return new Response(body(0, Math.max(0, st.size - 1)), {
+        status: 200,
+        headers: { ...headers, 'Content-Length': String(st.size) }
+    });
 }
 
 // ---------------------------------------------------------------- watching
@@ -399,22 +503,7 @@ if (!app.requestSingleInstanceLock()) {
     app.whenReady().then(() => {
         loadConfig();
 
-        protocol.handle('clip', async (req) => {
-            const p = decodeURIComponent(new URL(req.url).pathname.replace(/^\//, ''));
-            // Headers are forwarded so Range survives, which is what seeking and
-            // currentTime = 0 ride on.
-            const res = await net.fetch(pathToFileURL(p).toString(), { headers: req.headers });
-            // The renderer draws a tile into a canvas to make its own poster when
-            // there is no ffmpeg. Reading that canvas back taints unless the clip
-            // is served as explicitly shareable, and the read throws instead.
-            const headers = new Headers(res.headers);
-            headers.set('Access-Control-Allow-Origin', '*');
-            return new Response(res.body, {
-                status: res.status,
-                statusText: res.statusText,
-                headers
-            });
-        });
+        protocol.handle('clip', serveClip);
 
         registerIpc();
         createWindow();
@@ -431,4 +520,4 @@ if (!app.requestSingleInstanceLock()) {
 
 // Exported for the offline tests. Electron never reads these; requiring this
 // file outside Electron is what the test harness does to reach the pure parts.
-module.exports = { scan, clipUrl, thumbFile, VIDEO_RE, findFfmpeg, loadConfig };
+module.exports = { scan, clipUrl, thumbFile, VIDEO_RE, findFfmpeg, loadConfig, parseRange, mimeFor, serveClip };

@@ -123,7 +123,7 @@ both suites on every push, on Ubuntu, against the lockfile.
 2. **Files are read from disk**, not through a `webkitdirectory` picker,
    so there are no `File` objects and no object URL churn. Clips reach the
    `<video>` tags over a registered `clip://` protocol backed by
-   `net.fetch`, which answers range requests, and every path is encoded
+   a handler that answers range requests itself, and every path is encoded
    whole because real clip names contain `#`, `?` and `%`.
 3. **Poster frames**, cached per clip in `userData/thumbs` and keyed by
    path and mtime together, so an edited clip gets a new poster instead of
@@ -157,9 +157,17 @@ The suites run in this container against clips Chromium encodes on the
 spot. What hasn't been exercised anywhere is Electron itself, because
 this was built in a sandbox with no display, so the window, the dialog,
 the `clip://` handler and the packaged exe are all first-run items on the
-workstation. The two pieces most likely to want a second look are range
-requests through `net.fetch`, which is what seeking rides on, and
-`webUtils.getPathForFile`, which is what a dropped folder rides on.
+workstation. `webUtils.getPathForFile`, which is what a dropped folder
+rides on, is the piece still worth watching on a first run.
+
+Range requests were the first thing to actually break here, and they
+broke exactly where the handoff said they would. Handing a `file://` URL
+to `net.fetch` returns the whole clip and never answers a Range request,
+so the video element decided the clips weren't seekable and every seek
+snapped back to zero. The handler reads the file itself now and answers
+206 with a real `Content-Range`, and `serveClip` is exported so the
+tests drive that path directly rather than a stand-in that was answering
+ranges correctly and hiding the bug.
 
 Local only. No telemetry, no network calls, nothing uploaded or indexed
 anywhere.
