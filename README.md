@@ -60,6 +60,12 @@ Keys are ignored while the filter box or a dropdown has focus, and the
 dropdowns hand focus back on change so the shortcuts keep working right
 after you use one.
 
+Solo carries a step arrow on each side. They answer to movement rather
+than to hover, so they're there the moment the mouse does anything and
+gone again a second and a half after it settles, and the one pointing
+past the end of the list is dead rather than missing. The arrow keys do
+the same thing without reaching for them.
+
 In solo, the scroll wheel zooms, anchored to whatever is under the
 pointer, up to eight times. Past a fit, drag to pan, and the picture
 stops where its edge would come inside the frame rather than sliding off

@@ -206,6 +206,49 @@
         will-change: transform;
     }
 
+    /* Solo's step arrows. They answer to movement rather than to hover, so
+       they are there the moment the mouse does anything and gone again when
+       it settles. The specificity has to beat the shared button:disabled
+       rule, or a disabled arrow would sit at its own opacity while the rest
+       have faded out. */
+    .soloarrow {
+        position: absolute;
+        top: 50%;
+        margin-top: -32px;
+        width: 44px;
+        height: 64px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        font-size: 26px;
+        line-height: 1;
+        background: rgba(0, 0, 0, .5);
+        border: 1px solid var(--line);
+        color: var(--ink);
+        cursor: pointer;
+        z-index: 2;
+    }
+
+    #soloprev { left: 14px; }
+    #solonext { right: 14px; }
+
+    body.solo .soloarrow {
+        opacity: 0;
+        transition: opacity .2s;
+        pointer-events: none;
+    }
+
+    body.solo.chrome .soloarrow {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    body.solo.chrome .soloarrow:disabled {
+        opacity: .2;
+        cursor: default;
+    }
+
     body.zoomed #solo video { cursor: grab; }
     body.zoomed.panning #solo video { cursor: grabbing; }
 
@@ -278,6 +321,8 @@
 </div>
 
 <div id="solo"><video id="solovid" loop playsinline></video>
+    <button id="soloprev" class="soloarrow" title="Previous clip (left arrow)" aria-label="Previous clip">&lsaquo;</button>
+    <button id="solonext" class="soloarrow" title="Next clip (right arrow)" aria-label="Next clip">&rsaquo;</button>
     <div id="solocap"></div>
 </div>
 
@@ -299,6 +344,7 @@
 
     var $ = function (id) { return document.getElementById(id); };
     var grid = $('grid'), solo = $('solo'), solovid = $('solovid'), solocap = $('solocap');
+    var soloprev = $('soloprev'), solonext = $('solonext');
 
     // Arbitrary filenames: #, ? and % are all legal and all break naive URL
     // building, so the whole path is encoded and decoded again in main.
@@ -704,7 +750,10 @@
         solovid.muted = state.muted;
         solovid.src = state.soloUrl;
         solocap.textContent = clip.rel;
+        soloprev.disabled = index <= 0;
+        solonext.disabled = index >= vis.length - 1;
         document.body.classList.add('solo');
+        showChrome();
 
         var p = solovid.play();
         if (p && p.catch) p.catch(function () { /* same as the grid */ });
@@ -725,6 +774,7 @@
         var index = state.soloIndex;
 
         document.body.classList.remove('solo');
+        hideChrome();
         resetZoom();
         try {
             solovid.pause();
@@ -740,6 +790,28 @@
             save({ page: state.page });
             render();
         }
+    }
+
+    // ---------------------------------------------------------- solo chrome
+
+    // The arrows answer to movement, not to hover, so they are up the moment
+    // the mouse does anything and gone again once it settles.
+    var CHROME_IDLE = 1500;
+    var chromeTimer = 0;
+
+    function showChrome() {
+        if (state.soloIndex < 0) return;
+        document.body.classList.add('chrome');
+        clearTimeout(chromeTimer);
+        chromeTimer = setTimeout(function () {
+            document.body.classList.remove('chrome');
+        }, CHROME_IDLE);
+    }
+
+    function hideChrome() {
+        clearTimeout(chromeTimer);
+        chromeTimer = 0;
+        document.body.classList.remove('chrome');
     }
 
     // ---------------------------------------------------------- zoom
@@ -965,6 +1037,22 @@
 
     solo.addEventListener('pointerup', endPan);
     solo.addEventListener('pointercancel', endPan);
+
+    solo.addEventListener('pointermove', showChrome);
+
+    function stepButton(btn, delta) {
+        // The overlay closes on click and pans on pointerdown, so the arrow has
+        // to stop both before either one reaches it.
+        btn.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            stepSolo(delta);
+            showChrome();
+        });
+    }
+
+    stepButton(soloprev, -1);
+    stepButton(solonext, 1);
 
     // A resized window changes the box the clamp is written against.
     window.addEventListener('resize', function () {
