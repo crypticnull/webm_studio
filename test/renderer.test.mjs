@@ -530,6 +530,106 @@ test('solo has its own scrubber, and using it does not close solo', async () => 
     await reset();
 });
 
+test('the wheel zooms solo, anchored to the pointer, and pans once in', async () => {
+    await page.keyboard.press('1');
+    await page.waitForSelector('body.solo');
+    await page.waitForFunction(() => document.getElementById('solovid').readyState >= 1,
+        null, { timeout: 15000 });
+
+    const state = () => page.evaluate(() => {
+        const v = document.getElementById('solovid');
+        return {
+            t: getComputedStyle(v).transform,
+            zoomed: document.body.classList.contains('zoomed'),
+            rect: v.getBoundingClientRect().toJSON()
+        };
+    });
+
+    const start = await state();
+    assert(start.t === 'none' || start.t === 'matrix(1, 0, 0, 1, 0, 0)',
+        'solo should open fitted, got ' + start.t);
+    assert(!start.zoomed);
+
+    // Zoom in on a point off to one side, so anchoring is actually tested.
+    const anchor = { x: Math.round(start.rect.x + start.rect.width * 0.25),
+                     y: Math.round(start.rect.y + start.rect.height * 0.5) };
+    await page.mouse.move(anchor.x, anchor.y);
+    await page.mouse.wheel(0, -600);
+    await page.waitForFunction(() => document.body.classList.contains('zoomed'),
+        null, { timeout: 3000 });
+
+    const zoomedIn = await page.evaluate(() => {
+        const m = new DOMMatrix(getComputedStyle(document.getElementById('solovid')).transform);
+        return { scale: m.a, rect: document.getElementById('solovid').getBoundingClientRect().toJSON() };
+    });
+    assert(zoomedIn.scale > 1, 'the wheel should scale up, got ' + zoomedIn.scale);
+    assert(zoomedIn.rect.width > start.rect.width + 1, 'the picture should get bigger');
+
+    // The content under the cursor should still be under the cursor: the same
+    // fraction across the picture maps back to roughly the same screen point.
+    const fracBefore = (anchor.x - start.rect.x) / start.rect.width;
+    const xAfter = zoomedIn.rect.x + fracBefore * zoomedIn.rect.width;
+    assert(Math.abs(xAfter - anchor.x) < 6,
+        'the anchor drifted ' + Math.abs(xAfter - anchor.x) + 'px');
+
+    // Dragging pans, and must not close solo on the click that ends it.
+    const before = zoomedIn.rect.x;
+    await page.mouse.down();
+    await page.mouse.move(anchor.x - 60, anchor.y);
+    await page.mouse.move(anchor.x - 120, anchor.y);
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+
+    assert(await page.evaluate(() => document.body.classList.contains('solo')),
+        'panning must not close solo');
+    const afterPan = await page.evaluate(() =>
+        document.getElementById('solovid').getBoundingClientRect().x);
+    assert(afterPan < before - 10, 'the picture should have moved with the drag');
+
+    // Zooming back out lands at fit, with the transform cleared rather than
+    // left sitting at scale one with a stale pan.
+    await page.mouse.wheel(0, 1400);
+    await page.waitForFunction(() => !document.body.classList.contains('zoomed'),
+        null, { timeout: 3000 });
+    const out = await state();
+    assert(out.t === 'none' || out.t === 'matrix(1, 0, 0, 1, 0, 0)',
+        'zooming out should clear the transform, got ' + out.t);
+
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.body.classList.contains('solo'));
+    await reset();
+});
+
+test('0 resets the zoom, and a new clip opens fitted', async () => {
+    await page.keyboard.press('1');
+    await page.waitForSelector('body.solo');
+    await page.waitForFunction(() => document.getElementById('solovid').readyState >= 1,
+        null, { timeout: 15000 });
+
+    const r = await page.evaluate(() =>
+        document.getElementById('solovid').getBoundingClientRect().toJSON());
+    await page.mouse.move(Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2));
+    await page.mouse.wheel(0, -800);
+    await page.waitForFunction(() => document.body.classList.contains('zoomed'),
+        null, { timeout: 3000 });
+
+    await page.keyboard.press('0');
+    await page.waitForFunction(() => !document.body.classList.contains('zoomed'),
+        null, { timeout: 3000 });
+
+    // Zoom in again, then step to the next clip: it should arrive fitted.
+    await page.mouse.wheel(0, -800);
+    await page.waitForFunction(() => document.body.classList.contains('zoomed'),
+        null, { timeout: 3000 });
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => !document.body.classList.contains('zoomed'),
+        null, { timeout: 3000 });
+
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.body.classList.contains('solo'));
+    await reset();
+});
+
 test('the scrubber lingers, then fades once the pointer has left', async () => {
     await page.locator('.tile').first().hover();
     await page.waitForFunction(() =>

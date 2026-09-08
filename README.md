@@ -52,12 +52,21 @@ npm --prefix X:\_CLAUDE\26_09_07_webm-studio install ; npm --prefix X:\_CLAUDE\2
 | `Space` | pause and play everything |
 | `R` | restart the page together |
 | `C` | fill the tiles, cropping what doesn't fit |
+| `0` | reset the zoom in solo |
 | `M` | mute |
 | `F` | fullscreen |
 
 Keys are ignored while the filter box or a dropdown has focus, and the
 dropdowns hand focus back on change so the shortcuts keep working right
 after you use one.
+
+In solo, the scroll wheel zooms, anchored to whatever is under the
+pointer, up to eight times. Past a fit, drag to pan, and the picture
+stops where its edge would come inside the frame rather than sliding off
+into nothing. `0` puts it back, and so does zooming out, closing solo,
+or stepping to the next clip, because carrying a zoom to another clip
+means arriving somewhere with no idea where you are. Scaling past the
+source resolution is the point, so it gets soft rather than refusing.
 
 Tiles carry no file name. The grid is there to be read as a wall, and a
 caption under every tile is noise, so the only thing one ever says is

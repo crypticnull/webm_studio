@@ -190,10 +190,24 @@
         align-items: center;
         justify-content: center;
         z-index: 10;
+        /* A zoomed clip is bigger than the window, and the overflow is the
+           part you scrolled past rather than something to reveal. */
+        overflow: hidden;
     }
 
     body.solo #solo { display: flex; }
-    #solo video { max-width: 100%; max-height: 100%; object-fit: contain; }
+    #solo video {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        /* Zoom is applied here. Origin at the corner keeps the anchor maths
+           honest: a point maps to translate + point * scale, nothing else. */
+        transform-origin: 0 0;
+        will-change: transform;
+    }
+
+    body.zoomed #solo video { cursor: grab; }
+    body.zoomed.panning #solo video { cursor: grabbing; }
 
     #solocap {
         position: fixed;
@@ -681,6 +695,10 @@
         if (index < 0 || index >= vis.length) return;
         var clip = vis[index];
 
+        // Every clip starts fitted. Carrying a zoom across to the next one
+        // means landing somewhere with no idea where you are.
+        resetZoom();
+
         state.soloIndex = index;
         state.soloUrl = clipUrl(clip.path);
         solovid.muted = state.muted;
@@ -707,6 +725,7 @@
         var index = state.soloIndex;
 
         document.body.classList.remove('solo');
+        resetZoom();
         try {
             solovid.pause();
             solovid.removeAttribute('src');
@@ -721,6 +740,93 @@
             save({ page: state.page });
             render();
         }
+    }
+
+    // ---------------------------------------------------------- zoom
+
+    var ZOOM_MIN = 1;
+    var ZOOM_MAX = 8;
+    var zoom = 1;
+    var panX = 0;
+    var panY = 0;
+    var panning = false;
+    var panFromX = 0;
+    var panFromY = 0;
+    var panMoved = false;
+
+    // offsetWidth and its neighbours ignore the transform, so they keep
+    // reporting the untransformed box however far in the zoom has gone. That
+    // is what the anchor maths has to be written against.
+    function soloBase() {
+        var host = solo.getBoundingClientRect();
+        return {
+            host: host,
+            left: host.left + solovid.offsetLeft,
+            top: host.top + solovid.offsetTop,
+            w: solovid.offsetWidth,
+            h: solovid.offsetHeight
+        };
+    }
+
+    // Two rules, and they turn out to be the same two numbers either way round.
+    // Bigger than the window, no edge may come inside it. Smaller than the
+    // window, no edge may leave it. Snapping the small case back to centred
+    // instead would cancel the cursor anchoring on whichever axis is
+    // letterboxed, which is most of them.
+    function clampPan(b) {
+        function fit(pan, hostNear, hostFar, base, size) {
+            var a = hostNear - base;
+            var c = hostFar - base - size;
+            return Math.min(Math.max(pan, Math.min(a, c)), Math.max(a, c));
+        }
+
+        panX = fit(panX, b.host.left, b.host.right, b.left, b.w * zoom);
+        panY = fit(panY, b.host.top, b.host.bottom, b.top, b.h * zoom);
+    }
+
+    function applyZoom() {
+        if (zoom <= 1.0001) {
+            zoom = 1;
+            panX = 0;
+            panY = 0;
+            solovid.style.transform = '';
+            document.body.classList.remove('zoomed');
+            return;
+        }
+        document.body.classList.add('zoomed');
+        solovid.style.transform =
+            'translate(' + panX + 'px, ' + panY + 'px) scale(' + zoom + ')';
+    }
+
+    function resetZoom() {
+        zoom = 1;
+        panX = 0;
+        panY = 0;
+        panning = false;
+        panMoved = false;
+        document.body.classList.remove('zoomed', 'panning');
+        solovid.style.transform = '';
+    }
+
+    function zoomAt(clientX, clientY, factor) {
+        var b = soloBase();
+        if (!b.w || !b.h) return;
+
+        var next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * factor));
+        if (next === zoom) return;
+
+        // Whatever is under the cursor stays under the cursor. With the origin
+        // at the corner a point maps to pan + point * zoom, so holding it still
+        // across a scale change is one line each way.
+        var cx = clientX - b.left;
+        var cy = clientY - b.top;
+        var k = next / zoom;
+        panX = cx - (cx - panX) * k;
+        panY = cy - (cy - panY) * k;
+        zoom = next;
+
+        clampPan(b);
+        applyZoom();
     }
 
     // ---------------------------------------------------------- controls
@@ -813,7 +919,57 @@
     $('full').addEventListener('click', toggleFullscreen);
     $('prev').addEventListener('click', function () { go(-1); });
     $('next').addEventListener('click', function () { go(1); });
-    solo.addEventListener('click', closeSolo);
+    solo.addEventListener('click', function () {
+        // A pan ends in a click. That must not also close the view.
+        if (panMoved) { panMoved = false; return; }
+        closeSolo();
+    });
+
+    solo.addEventListener('wheel', function (e) {
+        if (state.soloIndex < 0) return;
+        e.preventDefault();
+        // Lines rather than pixels on some mice, so put both on one scale.
+        var dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+        zoomAt(e.clientX, e.clientY, Math.exp(-dy * 0.0015));
+    }, { passive: false });
+
+    solo.addEventListener('pointerdown', function (e) {
+        if (e.button !== 0 || zoom <= 1) return;
+        panning = true;
+        panMoved = false;
+        panFromX = e.clientX;
+        panFromY = e.clientY;
+        document.body.classList.add('panning');
+        try { solo.setPointerCapture(e.pointerId); } catch (err) { /* fine */ }
+    });
+
+    solo.addEventListener('pointermove', function (e) {
+        if (!panning) return;
+        var dx = e.clientX - panFromX;
+        var dy = e.clientY - panFromY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) panMoved = true;
+        panFromX = e.clientX;
+        panFromY = e.clientY;
+        panX += dx;
+        panY += dy;
+        clampPan(soloBase());
+        applyZoom();
+    });
+
+    function endPan(e) {
+        if (!panning) return;
+        panning = false;
+        document.body.classList.remove('panning');
+        try { solo.releasePointerCapture(e.pointerId); } catch (err) { /* fine */ }
+    }
+
+    solo.addEventListener('pointerup', endPan);
+    solo.addEventListener('pointercancel', endPan);
+
+    // A resized window changes the box the clamp is written against.
+    window.addEventListener('resize', function () {
+        if (zoom > 1) { clampPan(soloBase()); applyZoom(); }
+    });
 
     // Solo gets the same bar as a tile, built once because the element is
     // static. Its click handler stops there, so scrubbing never closes solo.
@@ -850,6 +1006,7 @@
         if (k === 'm') { e.preventDefault(); setMuted(!state.muted); return; }
         if (k === 'c') { e.preventDefault(); setFill(!state.fill); return; }
         if (k === 'f') { e.preventDefault(); toggleFullscreen(); return; }
+        if (e.key === '0' && state.soloIndex >= 0) { e.preventDefault(); resetZoom(); return; }
 
         if (e.key >= '1' && e.key <= '9') {
             var slot = parseInt(e.key, 10) - 1;
