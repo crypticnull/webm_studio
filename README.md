@@ -61,8 +61,9 @@ after you use one.
 
 Hovering a tile brings up a scrub bar along its bottom edge. Click or
 drag it to move through that clip, and it seeks live while you drag.
-Clicking the bar never opens the clip full screen, so scrubbing and
-soloing don't fight each other. Move the pointer away and the bar stays
+Solo has the same bar, a little taller since there's room for it.
+Clicking the bar never opens the clip full screen and never closes solo,
+so scrubbing doesn't fight either of them. Move the pointer away and the bar stays
 up for a second and a half before fading, which is long enough to cross
 a gap between two tiles without it flickering. A clip whose duration
 can't be read doesn't get a bar, because there would be nothing to scrub

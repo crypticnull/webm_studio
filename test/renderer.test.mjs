@@ -398,6 +398,57 @@ test('the scrubber appears on hover and seeks where it is clicked', async () => 
     await reset();
 });
 
+test('solo has its own scrubber, and using it does not close solo', async () => {
+    await page.keyboard.press('1');
+    await page.waitForSelector('body.solo');
+    await page.waitForFunction(() => {
+        const v = document.getElementById('solovid');
+        return v.readyState >= 1 && isFinite(v.duration) && v.duration > 0;
+    }, null, { timeout: 15000 });
+
+    const scrub = page.locator('#solo .scrub');
+    await scrub.hover();
+    await page.waitForFunction(() =>
+        getComputedStyle(document.querySelector('#solo .scrub')).opacity === '1',
+        null, { timeout: 3000 });
+
+    await page.evaluate(() => document.getElementById('solovid').pause());
+
+    const box = await scrub.boundingBox();
+    const seekTo = async (frac) => {
+        await page.mouse.click(box.x + box.width * frac, box.y + box.height / 2);
+        await page.waitForTimeout(250);
+        return page.evaluate(() => {
+            const v = document.getElementById('solovid');
+            return { t: v.currentTime, d: v.duration };
+        });
+    };
+
+    const early = await seekTo(0.2);
+    const late = await seekTo(0.7);
+    assert(late.t > early.t, 'solo should seek forward, got ' + early.t + ' then ' + late.t);
+    assert(late.t > late.d * 0.35, 'a click past halfway should land past halfway');
+
+    // The overlay closes on click, so the bar has to stop the click itself.
+    assert(await page.evaluate(() => document.body.classList.contains('solo')),
+        'scrubbing must not close solo');
+
+    const width = await page.evaluate(() => {
+        const p = document.querySelector('#solo .played');
+        return p.getBoundingClientRect().width / p.parentElement.getBoundingClientRect().width;
+    });
+    assert(width > 0.35, 'the solo bar should show the new position, got ' + width);
+
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.body.classList.contains('solo'));
+
+    // The solo bar must stop being driven once solo is shut.
+    await page.waitForTimeout(300);
+    assert(await page.evaluate(() => document.querySelector('#solo .scrub').offsetParent === null),
+        'the solo bar should be off screen once solo closes');
+    await reset();
+});
+
 test('the scrubber lingers, then fades once the pointer has left', async () => {
     await page.locator('.tile').first().hover();
     await page.waitForFunction(() =>
