@@ -60,7 +60,12 @@ dropdowns hand focus back on change so the shortcuts keep working right
 after you use one.
 
 Hovering a tile brings up a scrub bar along its bottom edge. Click or
-drag it to move through that clip, and it seeks live while you drag.
+drag it to move through that clip, and it seeks live while you drag. The
+drag takes the clip and hands it back on release, because seeking a clip
+that's still playing fights the playback and the frame you picked never
+settles. Only one seek is ever in flight and it always targets the
+newest pointer position, so a fast drag lands where you let go instead
+of working through a queue of places you already left.
 Solo has the same bar, a little taller since there's room for it.
 Clicking the bar never opens the clip full screen and never closes solo,
 so scrubbing doesn't fight either of them. Move the pointer away and the bar stays

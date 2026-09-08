@@ -432,6 +432,9 @@
             // Covers a tile torn down by a page turn and the solo bar once solo
             // has closed, so nothing keeps ticking out of sight.
             if (!v.isConnected || !bar.scrub.offsetParent) { liveBars.delete(bar); return; }
+            // Mid drag the bar answers to the pointer, not to where the
+            // decoder has got to, or the two fight and it jitters.
+            if (bar.dragging) return;
             if (isFinite(v.duration) && v.duration > 0) {
                 bar.played.style.width = (v.currentTime / v.duration * 100) + '%';
             }
@@ -454,8 +457,42 @@
         track.appendChild(played);
         scrub.appendChild(track);
 
-        var bar = { video: v, played: played, scrub: scrub };
+        var bar = { video: v, played: played, scrub: scrub, dragging: false };
         var dragging = false;
+        var resumeOnRelease = false;
+
+        // One seek in flight, and only ever the newest position. Writing
+        // currentTime on every pointermove stacks seeks behind each other, and
+        // that queue is what makes a drag lag and lets frames go missing: the
+        // decoder is still serving a position the pointer left long ago.
+        var wanted = null;
+        var seeking = false;
+        var watchdog = 0;
+
+        function flushSeek() {
+            if (seeking || wanted === null) return;
+            if (!(isFinite(v.duration) && v.duration > 0)) { wanted = null; return; }
+            var t = wanted;
+            wanted = null;
+            seeking = true;
+            clearTimeout(watchdog);
+            // A seek that never reports back must not wedge the bar for good.
+            watchdog = setTimeout(function () { seeking = false; flushSeek(); }, 400);
+            try {
+                v.currentTime = t;
+            } catch (e) {
+                seeking = false;
+            }
+        }
+
+        function seekDone() {
+            clearTimeout(watchdog);
+            seeking = false;
+            flushSeek();
+        }
+
+        v.addEventListener('seeked', seekDone);
+        v.addEventListener('error', seekDone);
 
         function seekTo(clientX) {
             if (!(isFinite(v.duration) && v.duration > 0)) return;
@@ -467,11 +504,11 @@
 
             // Landing exactly on the end wraps a looping clip straight back to
             // zero, which reads as the scrubber refusing to work at all.
-            var t = Math.min(frac * v.duration, Math.max(0, v.duration - 0.05));
-            try {
-                v.currentTime = t;
-            } catch (e) { /* a clip mid teardown, nothing to seek */ }
+            wanted = Math.min(frac * v.duration, Math.max(0, v.duration - 0.05));
+            // The bar tracks the pointer at once, whatever the decoder is
+            // still catching up with.
             played.style.width = (frac * 100) + '%';
+            flushSeek();
         }
 
         // The bar only needs to move while it is visible, so hovering the tile
@@ -487,8 +524,14 @@
             e.preventDefault();
             e.stopPropagation();
             dragging = true;
+            bar.dragging = true;
             scrub.classList.add('dragging');
             startBar(bar);
+            // A playing clip fights every seek, so the drag takes the clip and
+            // hands it back on release. Paused is also what makes the frame
+            // under the pointer actually stay on screen.
+            resumeOnRelease = !v.paused;
+            if (resumeOnRelease) v.pause();
             try { scrub.setPointerCapture(e.pointerId); } catch (err) { /* fine */ }
             seekTo(e.clientX);
         });
@@ -500,8 +543,15 @@
         function endDrag(e) {
             if (!dragging) return;
             dragging = false;
+            bar.dragging = false;
             scrub.classList.remove('dragging');
             try { scrub.releasePointerCapture(e.pointerId); } catch (err) { /* fine */ }
+            // Give it back, unless everything is paused on purpose.
+            if (resumeOnRelease && !state.paused) {
+                var q = v.play();
+                if (q && q.catch) q.catch(function () { /* nothing to do */ });
+            }
+            resumeOnRelease = false;
             if (!tile.matches(':hover')) liveBars.delete(bar);
         }
 

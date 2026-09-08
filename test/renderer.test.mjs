@@ -398,6 +398,87 @@ test('the scrubber appears on hover and seeks where it is clicked', async () => 
     await reset();
 });
 
+// The drag is what was broken: every pointermove wrote currentTime while the
+// clip was still playing, so seeks queued behind each other and the frame under
+// the pointer often never arrived.
+test('dragging the scrubber lands on the last position, and hands playback back', async () => {
+    const tile = page.locator('.tile').first();
+    await tile.hover();
+    const scrub = tile.locator('.scrub');
+    await page.waitForFunction(() =>
+        getComputedStyle(document.querySelector('.scrub')).opacity === '1', null, { timeout: 3000 });
+
+    const box = await scrub.boundingBox();
+    const y = box.y + box.height / 2;
+    const at = (f) => box.x + box.width * f;
+
+    await page.mouse.move(at(0.15), y);
+    await page.mouse.down();
+
+    // The drag takes the clip, so the frame under the pointer stays put.
+    await page.waitForFunction(() => document.querySelector('.tile video').paused,
+        null, { timeout: 3000 });
+
+    // A real drag: many moves, faster than any one seek can finish.
+    for (const f of [0.25, 0.35, 0.45, 0.55, 0.65, 0.8]) {
+        await page.mouse.move(at(f), y);
+    }
+
+    // The bar answers the pointer immediately, whatever the decoder is doing.
+    const barAtEnd = await page.evaluate(() => {
+        const p = document.querySelector('.scrub .played');
+        return p.getBoundingClientRect().width / p.parentElement.getBoundingClientRect().width;
+    });
+    assert(barAtEnd > 0.7, 'the bar should be under the pointer at once, got ' + barAtEnd);
+
+    // Read it while the drag still holds the clip. These fixtures are barely a
+    // second long, so anything measured after playback resumes has had time to
+    // loop past the answer.
+    await page.waitForFunction(() => {
+        const v = document.querySelector('.tile video');
+        return !v.seeking && v.currentTime > v.duration * 0.6;
+    }, null, { timeout: 5000 });
+
+    const held = await page.evaluate(() => {
+        const v = document.querySelector('.tile video');
+        return { t: v.currentTime, d: v.duration };
+    });
+    // Coalescing means the newest position wins rather than some stale one
+    // still queued from halfway through the drag.
+    assert(held.t > held.d * 0.6 && held.t < held.d,
+        'the drag should settle where it ended, got ' + held.t + ' of ' + held.d);
+
+    await page.mouse.up();
+    await page.waitForFunction(() => !document.querySelector('.tile video').paused,
+        null, { timeout: 3000 });
+    await reset();
+});
+
+test('a drag does not resume a clip that was deliberately paused', async () => {
+    await page.keyboard.press(' ');
+    await page.waitForFunction(() =>
+        [...document.querySelectorAll('.tile video')].every((v) => v.paused));
+
+    const tile = page.locator('.tile').first();
+    await tile.hover();
+    const box = await tile.locator('.scrub').boundingBox();
+    const y = box.y + box.height / 2;
+
+    await page.mouse.move(box.x + box.width * 0.3, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.6, y);
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    assert(await page.evaluate(() => document.querySelector('.tile video').paused),
+        'Space means paused, and a scrub must not undo that');
+
+    await page.keyboard.press(' ');
+    await page.waitForFunction(() =>
+        [...document.querySelectorAll('.tile video')].every((v) => !v.paused));
+    await reset();
+});
+
 test('solo has its own scrubber, and using it does not close solo', async () => {
     await page.keyboard.press('1');
     await page.waitForSelector('body.solo');
