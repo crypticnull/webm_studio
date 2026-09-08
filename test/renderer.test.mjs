@@ -530,6 +530,58 @@ test('solo has its own scrubber, and using it does not close solo', async () => 
     await reset();
 });
 
+test('solo steps with its arrows, which fade once the mouse settles', async () => {
+    await page.keyboard.press('1');
+    await page.waitForSelector('body.solo');
+    await page.waitForFunction(() => document.body.classList.contains('chrome'),
+        null, { timeout: 3000 });
+
+    const name = () => page.locator('#solocap').textContent();
+    const first = await name();
+
+    // On the first clip there is nowhere back to go.
+    assert(await page.locator('#soloprev').isDisabled(), 'prev should be dead on the first clip');
+    assert(!(await page.locator('#solonext').isDisabled()), 'next should be live');
+
+    await page.locator('#solonext').click();
+    await page.waitForFunction((f) => document.getElementById('solocap').textContent !== f,
+        first, { timeout: 3000 });
+    const second = await name();
+    assert(second !== first, 'next should move on');
+
+    // The overlay closes on click, so the arrow has to stop its own.
+    assert(await page.evaluate(() => document.body.classList.contains('solo')),
+        'stepping must not close solo');
+    assert(!(await page.locator('#soloprev').isDisabled()), 'prev should wake up after one step');
+
+    await page.locator('#soloprev').click();
+    await page.waitForFunction((f) => document.getElementById('solocap').textContent === f,
+        first, { timeout: 3000 });
+
+    // Idle long enough and they go. The scrubber answers to hover, but these
+    // answer to movement, so simply not moving is enough.
+    await page.waitForFunction(() => !document.body.classList.contains('chrome'),
+        null, { timeout: 4000 });
+    // The class goes first and the opacity follows it down over the fade, so
+    // wait for the value rather than reading it the instant the class drops.
+    await page.waitForFunction(() =>
+        parseFloat(getComputedStyle(document.getElementById('solonext')).opacity) < 0.1,
+        null, { timeout: 3000 });
+
+    // Any movement brings them back.
+    const box = await page.locator('#solo').boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.move(box.x + box.width / 2 + 20, box.y + box.height / 2);
+    await page.waitForFunction(() => document.body.classList.contains('chrome'),
+        null, { timeout: 3000 });
+
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.body.classList.contains('solo'));
+    assert(await page.evaluate(() => !document.body.classList.contains('chrome')),
+        'closing solo should take the chrome with it');
+    await reset();
+});
+
 test('the wheel zooms solo, anchored to the pointer, and pans once in', async () => {
     await page.keyboard.press('1');
     await page.waitForSelector('body.solo');
