@@ -530,6 +530,46 @@ test('solo has its own scrubber, and using it does not close solo', async () => 
     await reset();
 });
 
+test('solo scales a small clip up to fill the window', async () => {
+    await page.keyboard.press('1');
+    await page.waitForSelector('body.solo');
+    await page.waitForFunction(() => {
+        const v = document.getElementById('solovid');
+        return v.videoWidth > 0 && v.offsetWidth > 0;
+    }, null, { timeout: 15000 });
+
+    const fit = await page.evaluate(() => {
+        const v = document.getElementById('solovid');
+        const host = document.getElementById('solo').getBoundingClientRect();
+        return {
+            vw: v.videoWidth, vh: v.videoHeight,
+            w: v.offsetWidth, h: v.offsetHeight,
+            hostW: host.width, hostH: host.height
+        };
+    });
+
+    // The fixtures are a couple of hundred pixels wide, so anything near their
+    // own resolution means solo is not scaling up at all.
+    assert(fit.w > fit.vw * 2,
+        'a small clip should be scaled up, ' + fit.vw + 'px source rendered at ' + fit.w);
+
+    // Filled on one axis, and never past the window on either.
+    const touchesW = Math.abs(fit.w - fit.hostW) < 2;
+    const touchesH = Math.abs(fit.h - fit.hostH) < 2;
+    assert(touchesW || touchesH, 'one axis should meet the window edge');
+    assert(fit.w <= fit.hostW + 1 && fit.h <= fit.hostH + 1, 'neither axis should overflow');
+
+    // Aspect ratio survives the scaling up.
+    const before = fit.vw / fit.vh;
+    const after = fit.w / fit.h;
+    assert(Math.abs(before - after) < 0.02,
+        'aspect should hold, ' + before.toFixed(3) + ' became ' + after.toFixed(3));
+
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.body.classList.contains('solo'));
+    await reset();
+});
+
 test('solo steps with its arrows, which fade once the mouse settles', async () => {
     await page.keyboard.press('1');
     await page.waitForSelector('body.solo');
