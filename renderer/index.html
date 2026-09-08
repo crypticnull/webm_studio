@@ -814,6 +814,34 @@
         document.body.classList.remove('chrome');
     }
 
+    // ---------------------------------------------------------- solo sizing
+
+    // Solo fills the window. Left to the stylesheet a clip smaller than the
+    // screen sits at its own resolution in the middle of all that black, which
+    // is not what solo is for. Sizing the element to the fitted box rather than
+    // letterboxing inside a full-window box keeps the element and the picture
+    // the same rectangle, which is what the zoom maths is written against.
+    function sizeSolo() {
+        var vw = solovid.videoWidth;
+        var vh = solovid.videoHeight;
+
+        if (state.fill) {
+            // Fill mode wants the container and a cropped picture, which the
+            // stylesheet already says. Inline sizes would only fight it.
+            solovid.style.width = '';
+            solovid.style.height = '';
+            return;
+        }
+
+        if (!vw || !vh) return;
+        var host = solo.getBoundingClientRect();
+        if (!host.width || !host.height) return;
+
+        var f = Math.min(host.width / vw, host.height / vh);
+        solovid.style.width = Math.round(vw * f) + 'px';
+        solovid.style.height = Math.round(vh * f) + 'px';
+    }
+
     // ---------------------------------------------------------- zoom
 
     var ZOOM_MIN = 1;
@@ -915,6 +943,12 @@
         state.fill = f;
         document.body.classList.toggle('fill', f);
         save({ fill: f });
+        // Fit and fill are different rectangles, so solo has to be re-sized
+        // rather than left holding the one the other mode wanted.
+        if (state.soloIndex >= 0) {
+            resetZoom();
+            sizeSolo();
+        }
         updateChrome();
     }
 
@@ -1056,6 +1090,8 @@
 
     // A resized window changes the box the clamp is written against.
     window.addEventListener('resize', function () {
+        if (state.soloIndex < 0) return;
+        sizeSolo();
         if (zoom > 1) { clampPan(soloBase()); applyZoom(); }
     });
 
@@ -1064,6 +1100,7 @@
     solo.appendChild(buildScrub(solo, solovid));
     solovid.addEventListener('loadedmetadata', function () {
         solo.classList.toggle('nodur', !(isFinite(solovid.duration) && solovid.duration > 0));
+        sizeSolo();
     });
 
     document.addEventListener('keydown', function (e) {

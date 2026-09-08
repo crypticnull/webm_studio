@@ -60,6 +60,10 @@ Keys are ignored while the filter box or a dropdown has focus, and the
 dropdowns hand focus back on change so the shortcuts keep working right
 after you use one.
 
+Solo fills the window. A clip smaller than the screen is scaled up to
+fit rather than sitting at its own resolution in the middle of all that
+black, and `C` crops it to fill edge to edge instead.
+
 Solo carries a step arrow on each side. They answer to movement rather
 than to hover, so they're there the moment the mouse does anything and
 gone again a second and a half after it settles, and the one pointing
