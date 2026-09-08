@@ -302,7 +302,13 @@ async function serveClip(req) {
         // The poster fallback draws a tile into a canvas and reads it back,
         // which taints unless the clip is explicitly shareable.
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-cache'
+        // Scrubbing is a burst of range requests over one clip. no-cache made
+        // Chromium revalidate every one of them and kept the media cache from
+        // holding the clip at all, so each seek went back to disk. The
+        // validators carry the mtime, so an edited clip still invalidates.
+        'Cache-Control': 'private, max-age=3600',
+        'Last-Modified': new Date(st.mtimeMs).toUTCString(),
+        'ETag': '"' + st.size.toString(16) + '-' + Math.floor(st.mtimeMs).toString(16) + '"'
     };
 
     const body = (start, end) => Readable.toWeb(fs.createReadStream(p, { start, end }));
