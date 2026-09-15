@@ -486,6 +486,44 @@ test('a drag does not resume a clip that was deliberately paused', async () => {
     await reset();
 });
 
+test('solo takes the sound, and the grid gets it back on the way out', async () => {
+    // Sound on, so there is something to take over.
+    await page.keyboard.press('m');
+    await page.waitForFunction(() =>
+        [...document.querySelectorAll('.tile video')].every((v) => !v.muted));
+
+    await page.keyboard.press('1');
+    await page.waitForSelector('body.solo');
+    await page.waitForFunction(() =>
+        [...document.querySelectorAll('.tile video')].every((v) => v.muted),
+        null, { timeout: 3000 });
+
+    assert(!(await page.evaluate(() => document.getElementById('solovid').muted)),
+        'the clip you opened should be the one you hear');
+    // The button still reads sound, because the grid is silenced by solo
+    // rather than by the mute setting.
+    assert((await page.locator('#mute').textContent()) === 'Sound',
+        'solo should not look like it pressed mute');
+
+    // Stepping stays solo, so the grid stays quiet.
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(200);
+    assert(await page.evaluate(() =>
+        [...document.querySelectorAll('.tile video')].every((v) => v.muted)),
+        'stepping should not hand the sound back');
+
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() =>
+        [...document.querySelectorAll('.tile video')].every((v) => !v.muted),
+        null, { timeout: 3000 });
+
+    // And muting for real still holds once solo is out of the way.
+    await page.keyboard.press('m');
+    await page.waitForFunction(() =>
+        [...document.querySelectorAll('.tile video')].every((v) => v.muted));
+    await reset();
+});
+
 test('solo has its own scrubber, and using it does not close solo', async () => {
     await page.keyboard.press('1');
     await page.waitForSelector('body.solo');

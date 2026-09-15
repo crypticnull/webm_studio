@@ -434,7 +434,7 @@
 
             var v = document.createElement('video');
             v.loop = true;
-            v.muted = state.muted;
+            v.muted = gridMuted();
             v.playsInline = true;
             v.preload = 'auto';
 
@@ -741,6 +741,7 @@
         state.soloUrl = clipUrl(clip.path);
         solovid.muted = state.muted;
         solovid.src = state.soloUrl;
+        applyGridMuted();
         solocap.textContent = clip.rel;
         soloprev.disabled = index <= 0;
         solonext.disabled = index >= vis.length - 1;
@@ -775,6 +776,7 @@
         } catch (e) { /* nothing to do */ }
         state.soloIndex = -1;
         state.soloUrl = null;
+        applyGridMuted();
 
         var target = Math.floor(index / state.per);
         if (target !== state.page) {
@@ -952,9 +954,21 @@
 
     // ---------------------------------------------------------- controls
 
+    // A tile is silent while solo is open, whatever the mute button says. The
+    // grid playing under the clip you opened to listen to is the whole reason
+    // you opened it.
+    function gridMuted() {
+        return state.muted || state.soloIndex >= 0;
+    }
+
+    function applyGridMuted() {
+        var m = gridMuted();
+        state.vids.forEach(function (v) { v.muted = m; });
+    }
+
     function setMuted(m) {
         state.muted = m;
-        state.vids.forEach(function (v) { v.muted = m; });
+        applyGridMuted();
         solovid.muted = m;
         save({ muted: m });
         updateChrome();
