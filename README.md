@@ -54,11 +54,18 @@ npm --prefix X:\_CLAUDE\26_09_07_webm-studio install ; npm --prefix X:\_CLAUDE\2
 | `C` | fill the tiles, cropping what doesn't fit |
 | `0` | reset the zoom in solo |
 | `M` | mute |
+| | (solo takes the sound while it's open) |
 | `F` | fullscreen |
 
 Keys are ignored while the filter box or a dropdown has focus, and the
 dropdowns hand focus back on change so the shortcuts keep working right
 after you use one.
+
+With sound on, the grid plays every tile at once, which is fine for
+reading a page but not for listening to one clip. Opening solo silences
+the grid for as long as it's open, so the clip you opened is the one you
+hear, and closing hands the sound back. It isn't the mute button, so the
+button goes on reading whatever you set it to.
 
 Solo fills the window. A clip smaller than the screen is scaled up to
 fit rather than sitting at its own resolution in the middle of all that
